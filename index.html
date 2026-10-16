@@ -739,7 +739,7 @@ const M = {
 };
 
 const TABS = ['calc','fixed','quotes','products','stock','sales','stats'];
-const NAMES = { calc:'Calculadora', fixed:'Gastos fijos', stats:'Estadísticas' };
+const NAMES = { calc:'Calculadora', fixed:'Gastos fijos', stock:'Stock', stats:'Estadísticas' };
 const ICONS = { calc:'🧮', fixed:'⚙️', quotes:'📋', products:'📦', stock:'🧵', sales:'💰', stats:'📊' };
 
 const PR = `Bambu Lab A1 mini|180×180×180|Cama móvil|300|80|80
@@ -810,7 +810,7 @@ function initData(raw) {
     pk: 20500, kwh: 140, model: 'Otro / Personalizado', w: 110,
     life: 4320, parts: 150000, err: 5, rec: 30, mult: 5,
     tallerName: '',
-    aliasPago: '', cuit: '', direccion: '', telefono: '', email: ''
+    aliasPago: '', cuentaNombre: '', cuit: '', direccion: '', telefono: '', email: ''
   }, D.cfg || {});
   if (!D.profiles) D.profiles = [];
   if (!D.stock) D.stock = [];
@@ -1447,7 +1447,7 @@ function stock() {
 /* ========== PRESUPUESTOS ========== */
 function generateInvoice(q) {
   const C = D.cfg;
-  const num = q.num || (D.quoteCounter || 1);
+  const num = String(q.receiptNumber || '').trim() || String(q.num || (D.quoteCounter || 1)).padStart(4, '0');
   const fecha = q.date || new Date().toISOString().slice(0,10);
   const fechaFmt = new Date(fecha + 'T12:00:00').toLocaleDateString('es-AR', { day:'2-digit', month:'long', year:'numeric' });
 
@@ -1455,7 +1455,7 @@ function generateInvoice(q) {
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Factura ${num} — ${esc(C.tallerName || 'Sin nombre')}</title>
+<title>Factura ${esc(num)} — ${esc(C.tallerName || 'Sin nombre')}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, -apple-system, sans-serif; color: #18181b; background: #f4f4f5; padding: 24px; }
@@ -1528,7 +1528,7 @@ function generateInvoice(q) {
       </div>
       <div class="doc-info">
         <div class="label">Comprobante N°</div>
-        <div class="num">#${String(num).padStart(4,'0')}</div>
+        <div class="num">#${esc(num)}</div>
         <div class="fecha">${fechaFmt}</div>
       </div>
     </div>
@@ -1570,11 +1570,12 @@ function generateInvoice(q) {
       <span class="val">${money(q.total)}</span>
     </div>
 
-    ${C.aliasPago ? `
+    ${C.aliasPago || C.cuentaNombre ? `
     <div class="pay">
       <h3>Datos de pago</h3>
-      <div class="alias">${esc(C.aliasPago)}</div>
-      <p>Transferí el monto exacto a este alias. Una vez acreditado te confirmamos el pedido.</p>
+      ${C.aliasPago ? `<div class="alias">${esc(C.aliasPago)}</div>` : ''}
+      ${C.cuentaNombre ? `<p>Cuenta a nombre de: <strong>${esc(C.cuentaNombre)}</strong></p>` : ''}
+      ${C.aliasPago ? '<p>Transferí el monto exacto a este alias. Una vez acreditado te confirmamos el pedido.</p>' : ''}
     </div>` : `
     <div class="pay">
       <h3>Datos de pago</h3>
@@ -1618,6 +1619,7 @@ function quotes() {
         <div class="g">
           <label>Nombre del taller<input id="t_name" value="${esc(C.tallerName||'')}" placeholder="Nombre de tu emprendimiento"></label>
           <label>Alias de pago / CVU<input id="t_alias" value="${esc(C.aliasPago||'')}" placeholder="tu.alias.mp"></label>
+          <label>Cuenta a nombre de<input id="t_account_name" value="${esc(C.cuentaNombre||'')}" placeholder="Nombre y apellido del titular"></label>
           <label>CUIT / DNI<input id="t_cuit" value="${esc(C.cuit||'')}" placeholder="20-12345678-9"></label>
           <label>Dirección<input id="t_dir" value="${esc(C.direccion||'')}" placeholder="Calle 123, Ciudad"></label>
           <label>Teléfono<input id="t_tel" value="${esc(C.telefono||'')}" placeholder="+54 9 ..."></label>
@@ -1660,6 +1662,7 @@ function quotes() {
             <label>Detalle / Descripción<input id="q_desc" placeholder="Se completa si elegís producto"></label>
             <label>Precio (ARS)<input id="q_total" type="number" step="any" value="0"></label>
             <label>Fecha<input id="q_date" type="date"></label>
+            <label>Número de comprobante (opcional)<input id="q_receipt" type="text" placeholder="Ej.: 0001-00001234 · vacío: automático"></label>
           </div>
           <button class="p" id="q_add" style="margin-top:14px">Crear presupuesto</button>
         </div>
@@ -1711,6 +1714,7 @@ function quotes() {
     $('#t_save').onclick = () => {
       C.tallerName = $('#t_name').value.trim();
       C.aliasPago = $('#t_alias').value.trim();
+      C.cuentaNombre = $('#t_account_name').value.trim();
       C.cuit = $('#t_cuit').value.trim();
       C.direccion = $('#t_dir').value.trim();
       C.telefono = $('#t_tel').value.trim();
@@ -1742,12 +1746,13 @@ function quotes() {
               <div class="name">
                 ${esc(r.client || 'Sin cliente')}
                 ${isSold ? '<span class="badge sold">VENDIDO</span>' : '<span class="badge pending">PENDIENTE</span>'}
-                ${r.num ? `<span style="font-size:11px;color:var(--mu)">#${String(r.num).padStart(4,'0')}</span>` : ''}
+                ${r.receiptNumber || r.num ? `<span style="font-size:11px;color:var(--mu)">#${esc(r.receiptNumber || String(r.num).padStart(4,'0'))}</span>` : ''}
               </div>
               <div class="meta">${esc(r.date || '')} · ${esc(r.desc || '')}</div>
             </div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <b style="font-size:16px">${money(r.total)}</b>
+              <button class="s2" style="width:auto;margin:0;padding:6px 12px;font-size:12px" data-receipt="${realIdx}">N° comprobante</button>
               <button class="s2" style="width:auto;margin:0;padding:6px 12px;font-size:12px" data-pdf="${realIdx}">📄 Factura</button>
               ${!isSold ? `<button class="s2" style="width:auto;margin:0;padding:6px 12px;font-size:12px" data-sell="${realIdx}">Marcar vendido</button>` : ''}
               <button class="x" data-i="${realIdx}">✕</button>
@@ -1767,6 +1772,7 @@ function quotes() {
       D.quoteCounter = num + 1;
       rows.push({
         num,
+        receiptNumber: $('#q_receipt').value.trim(),
         date: $('#q_date').value || new Date().toISOString().slice(0,10),
         client: $('#q_client').value || 'Sin cliente',
         desc: $('#q_desc').value || 'Pieza',
@@ -1778,8 +1784,23 @@ function quotes() {
       renderQuotes();
     };
 
+    $$('[data-receipt]').forEach(b => b.onclick = () => {
+      const q = rows[+b.dataset.receipt];
+      const value = prompt('Número de comprobante para el PDF (vacío: automático):', q.receiptNumber || '');
+      if (value === null) return;
+      q.receiptNumber = value.trim();
+      save();
+      renderQuotes();
+    });
+
     $$('[data-pdf]').forEach(b => b.onclick = () => {
-      generateInvoice(rows[+b.dataset.pdf]);
+      const q = rows[+b.dataset.pdf];
+      if (!q.num) {
+        q.num = D.quoteCounter || 1;
+        D.quoteCounter = q.num + 1;
+        save();
+      }
+      generateInvoice(q);
     });
 
     $$('[data-sell]').forEach(b => b.onclick = () => {
