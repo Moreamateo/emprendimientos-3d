@@ -516,27 +516,82 @@ a:hover { text-decoration: underline; }
 .stat-row .ingreso { color: #4ade80; }
 .stat-row .gasto { color: #f87171; }
 
-/* Mobile */
+/* Botón peligro */
+button.danger {
+  background: #ef4444;
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+  transition: transform 0.15s, background 0.15s;
+}
+button.danger:hover { background: #dc2626; transform: translateY(-1px); }
+
+/* Mobile / tablet */
+@media (max-width: 900px) {
+  .two { grid-template-columns: 1fr; }
+  .g { grid-template-columns: 1fr 1fr; }
+}
 @media (max-width: 760px) {
   body { flex-direction: column; }
+  #app-wrap { flex-direction: column !important; }
   aside {
     width: 100%;
     height: auto;
     position: static;
     border-right: 0;
     border-bottom: 1px solid var(--bd);
-    padding: 12px;
+    padding: 12px 10px;
   }
+  aside h1 { margin: 0 4px 10px; font-size: 16px; }
   nav {
     flex-direction: row;
     overflow-x: auto;
     gap: 4px;
-    padding-bottom: 4px;
+    padding-bottom: 6px;
+    -webkit-overflow-scrolling: touch;
   }
-  nav button { width: auto; white-space: nowrap; padding: 8px 12px; }
-  main { padding: 16px; }
-  .bx div { font-size: 24px; }
-  .chart-bars { height: 140px; }
+  nav button {
+    width: auto;
+    white-space: nowrap;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+  .user-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 8px;
+  }
+  main { padding: 14px 12px 28px; }
+  h2 { font-size: 20px; }
+  .card { padding: 14px; }
+  .g { grid-template-columns: 1fr; gap: 12px; }
+  .bx div { font-size: 22px; }
+  .chart-bars { height: 130px; gap: 6px; }
+  .chart-bar { width: 10px; }
+  .profile-bar { flex-direction: column; align-items: stretch; }
+  .quote-item, .sale-item, .filament-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .quote-item > div:last-child,
+  .filament-item > button {
+    align-self: stretch;
+  }
+  .auth-box { padding: 24px 18px; }
+  .k { font-size: 22px; }
+}
+@media (max-width: 420px) {
+  nav button .ico { display: none; }
+  main { padding: 12px 10px 24px; }
+  .bx div { font-size: 20px; }
 }
 
 .bx.pulse { animation: pulse 0.4s ease; }
@@ -622,7 +677,13 @@ a:hover { text-decoration: underline; }
     <p class="sub" id="auth-sub">Iniciá sesión para sincronizar tus datos</p>
     <div class="auth-error" id="auth-error"></div>
     <label>Email<input type="email" id="auth-email" placeholder="tu@email.com" autocomplete="email"></label>
-    <label>Contraseña<input type="password" id="auth-pass" placeholder="Mínimo 6 caracteres" autocomplete="current-password"></label>
+    <label>Contraseña
+      <div style="position:relative;margin-top:4px">
+        <input type="password" id="auth-pass" placeholder="Mínimo 6 caracteres" autocomplete="current-password" style="margin-top:0;padding-right:44px;width:100%">
+        <button type="button" id="auth-eye" title="Ver contraseña"
+          style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--mu);cursor:pointer;font-size:15px;padding:4px 8px;border-radius:6px;line-height:1">👁</button>
+      </div>
+    </label>
     <button class="p" id="auth-btn">Iniciar sesión</button>
     <div class="switch" id="auth-switch">
       ¿No tenés cuenta? <a id="auth-toggle">Registrate</a>
@@ -884,6 +945,15 @@ function showAuth() {
   currentUser = null;
   updateAuthUI();
 }
+
+
+$('#auth-eye').onclick = () => {
+  const inp = $('#auth-pass');
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  $('#auth-eye').textContent = show ? '🙈' : '👁';
+  $('#auth-eye').title = show ? 'Ocultar contraseña' : 'Ver contraseña';
+};
 
 $('#auth-btn').onclick = async () => {
   hideAuthError();
@@ -1563,7 +1633,7 @@ function quotes() {
             ? `<img id="t_logo_preview" src="${C.logoB64}" alt="Logo" style="width:64px;height:64px;object-fit:contain;border-radius:10px;border:1px solid var(--bd);background:#fff">`
             : `<div id="t_logo_preview" style="width:64px;height:64px;border-radius:10px;border:1px dashed var(--bd);display:flex;align-items:center;justify-content:center;color:var(--mu);font-size:11px;text-align:center">Sin logo</div>`
           }
-          ${C.logoB64 ? '<button class="s2" id="t_logo_clear" style="width:auto;margin:0;padding:6px 12px;font-size:12px">Quitar logo</button>' : ''}
+          ${C.logoB64 ? '<button class="danger" id="t_logo_clear" style="margin:0">✕ Quitar logo</button>' : ''}
         </div>
         <button class="s2" id="t_save" style="margin-top:14px;width:auto">Guardar datos del taller</button>
       </div>
