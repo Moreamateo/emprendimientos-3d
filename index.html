@@ -747,7 +747,7 @@ function initData(raw) {
   D.cfg = Object.assign({
     pk: 20500, kwh: 140, model: 'Otro / Personalizado', w: 110,
     life: 4320, parts: 150000, err: 5, rec: 30, mult: 5,
-    tallerName: 'M²R 3D',
+    tallerName: '',
     aliasPago: '', cuit: '', direccion: '', telefono: '', email: ''
   }, D.cfg || {});
   if (!D.profiles) D.profiles = [];
@@ -758,20 +758,14 @@ function initData(raw) {
   if (!D.sales) D.sales = [];
 }
 
-// Always start empty until a user logs in
+// Solo en memoria + nube. NADA en el dispositivo.
 initData({});
 
 const get = k => D[k] || (D[k] = []);
 
-function localKey() {
-  return currentUser ? ('t3d_' + currentUser.id) : 't3d_guest';
-}
-
 let saveTimer = null;
 const save = () => {
-  if (!currentUser) return; // no guardar si no hay sesión
-  try { localStorage.setItem(localKey(), JSON.stringify(D)); } catch(e) {}
-  // Debounced cloud save
+  if (!currentUser) return; // sin sesión no se guarda nada
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
     try {
@@ -788,7 +782,7 @@ const save = () => {
         if (error) console.warn('Cloud insert:', error.message);
       }
     } catch (e) { console.warn('Cloud save failed', e); }
-  }, 800);
+  }, 600);
 };
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -848,12 +842,12 @@ async function loadCloudData() {
     if (data && data.data) {
       // Datos de ESTA cuenta en la nube
       initData(data.data);
-      try { localStorage.setItem(localKey(), JSON.stringify(D)); } catch(e) {}
+      
       toast('Datos de tu cuenta cargados');
     } else {
       // Cuenta nueva: vacío
       initData({});
-      try { localStorage.setItem(localKey(), JSON.stringify(D)); } catch(e) {}
+      
       const { error: insErr } = await sb.from('user_data').insert({
         user_id: currentUser.id,
         data: D,
@@ -1072,16 +1066,16 @@ function calc() {
           <div class="title">Pieza</div>
           <div class="g">
             <label>Horas de impresión
-              <input class="ci" id="c_h" type="number" step="any" value="0">
+              <input class="ci" id="c_h" type="number" step="any" value="" placeholder="0">
             </label>
             <label>Minutos adicionales
-              <input class="ci" id="c_min" type="number" step="any" value="50">
+              <input class="ci" id="c_min" type="number" step="any" value="" placeholder="0">
             </label>
             <label>Gramos de filamento
-              <input class="ci" id="c_g" type="number" step="any" value="60">
+              <input class="ci" id="c_g" type="number" step="any" value="" placeholder="0">
             </label>
             <label>Insumos extra (ARS)
-              <input class="ci" id="c_ins" type="number" step="any" value="1000">
+              <input class="ci" id="c_ins" type="number" step="any" value="" placeholder="0">
             </label>
           </div>
         </div>
@@ -1390,7 +1384,7 @@ function generateInvoice(q) {
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Factura ${num} — ${esc(C.tallerName || 'Emprendimientos 3D')}</title>
+<title>Factura ${num} — ${esc(C.tallerName || 'Mi Taller 3D')}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, -apple-system, sans-serif; color: #18181b; background: #f4f4f5; padding: 24px; }
@@ -1453,7 +1447,7 @@ function generateInvoice(q) {
       <div style="display:flex;gap:16px;align-items:center">
         <img class="logo" src="${C.logoB64 || LOGO_B64}" alt="Logo">
         <div class="brand">
-          <h1>${esc(C.tallerName || 'Emprendimientos 3D')}</h1>
+          <h1>${esc(C.tallerName || 'Mi Taller 3D')}</h1>
           <p>
             ${C.cuit ? 'CUIT: ' + esc(C.cuit) + '<br>' : ''}
             ${C.direccion ? esc(C.direccion) + '<br>' : ''}
@@ -1517,7 +1511,7 @@ function generateInvoice(q) {
     </div>`}
 
     <div class="footer">
-      Documento generado por ${esc(C.tallerName || 'Emprendimientos 3D')} · No válido como factura fiscal<br>
+      Documento generado por ${esc(C.tallerName || 'Mi Taller 3D')} · No válido como factura fiscal<br>
       Gracias por confiar en nosotros
     </div>
   </div>
@@ -1551,7 +1545,7 @@ function quotes() {
       <div class="card" style="margin-bottom:16px">
         <div class="title">Datos del taller (para la factura)</div>
         <div class="g">
-          <label>Nombre del taller<input id="t_name" value="${esc(C.tallerName||'')}" placeholder="Mi Emprendimiento 3D"></label>
+          <label>Nombre del taller<input id="t_name" value="${esc(C.tallerName||'')}" placeholder="Nombre de tu emprendimiento"></label>
           <label>Alias de pago / CVU<input id="t_alias" value="${esc(C.aliasPago||'')}" placeholder="tu.alias.mp"></label>
           <label>CUIT / DNI<input id="t_cuit" value="${esc(C.cuit||'')}" placeholder="20-12345678-9"></label>
           <label>Dirección<input id="t_dir" value="${esc(C.direccion||'')}" placeholder="Calle 123, Ciudad"></label>
@@ -1642,7 +1636,7 @@ function quotes() {
     };
 
     $('#t_save').onclick = () => {
-      C.tallerName = $('#t_name').value.trim() || 'Emprendimientos 3D';
+      C.tallerName = $('#t_name').value.trim();
       C.aliasPago = $('#t_alias').value.trim();
       C.cuit = $('#t_cuit').value.trim();
       C.direccion = $('#t_dir').value.trim();
