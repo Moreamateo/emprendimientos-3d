@@ -668,6 +668,39 @@ button.danger:hover { background: #dc2626; transform: translateY(-1px); }
   background: none; border: 0; color: var(--ac); cursor: pointer;
   font: inherit; font-weight: 600; padding: 4px 0;
 }
+/* Calculator only: reference palette and spacing. */
+.calc-ui { --tx:#f1f5fb; --mu:#9db0c9; --bd:#34475e; --ac:#60a5fa; color:var(--tx); }
+.calc-ui [hidden] { display:none !important; }
+.calc-ui .calc-layout { display:grid; grid-template-columns:minmax(0,2fr) minmax(290px,1fr); gap:24px; align-items:start; }
+.calc-ui .card { background:#1d2a3a; border:1px solid #34475e; border-radius:14px; padding:24px; margin-bottom:22px; }
+.calc-ui .title { font-size:20px; font-weight:750; margin-bottom:18px; }
+.calc-ui .section-icon { margin-right:10px; color:#00e5b0; }
+.calc-ui .g { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 16px; }
+.calc-ui label { color:#91c5ff; font-size:14px; font-weight:650; }
+.calc-ui input,.calc-ui select { background:#0f1727; color:#f1f5fb; border:1px solid #425873; border-radius:8px; min-height:46px; font-size:16px; width:100%; margin-top:6px; }
+.calc-ui input:focus,.calc-ui select:focus { outline:2px solid #60a5fa; outline-offset:1px; }
+.calc-ui .field-unit { position:relative; display:block; }
+.calc-ui .field-unit input { padding-right:80px; }
+.calc-ui .unit { position:absolute; right:13px; top:20px; color:#819aba; font-size:14px; pointer-events:none; }
+.calc-ui .calc-note { margin-top:20px; padding:14px 16px; border:1px solid #35567d; border-radius:12px; background:#24374e; color:#a1c4eb; line-height:1.5; }
+.calc-ui .model-guide { background:#182435; border:1px solid var(--bd); border-radius:12px; padding:16px; margin-bottom:18px; }
+.calc-ui .model-guide label { color:#fff; }
+.calc-ui .help { display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; margin-left:5px; border:1px solid #4e83bd; border-radius:50%; color:#60a5fa; font-size:12px; cursor:help; }
+.calc-ui .rw { display:flex; justify-content:space-between; gap:12px; padding:10px 0; color:var(--mu); }
+.calc-ui .rw b { color:#f1f5fb; white-space:nowrap; }
+.calc-ui .rw.labor b { color:#c084fc; }
+.calc-ui hr { border:0; border-top:1px solid var(--bd); margin:16px 0; }
+.calc-ui .sale-box { text-align:center; border:1px solid #3b82f6; border-radius:10px; padding:16px; margin:12px 0 16px; background:#20365c; color:#60a5fa; }
+.calc-ui .sale-box strong { display:block; color:#eff6ff; font-size:34px; line-height:1.4; }
+.calc-ui .summary-mini { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.calc-ui .summary-mini div { padding:10px; border:1px solid var(--bd); border-radius:10px; background:#182435; }
+.calc-ui .summary-mini small { display:block; color:var(--mu); }
+.calc-ui .calc-summary { position:sticky; top:20px; }
+.calc-ui details summary { cursor:pointer; color:#91c5ff; margin-bottom:12px; }
+.calc-ui .p { background:#2563eb; color:#fff; }
+@media(max-width:1050px) { .calc-ui .calc-layout { grid-template-columns:1fr; } .calc-ui .calc-summary { position:static; } }
+@media(max-width:480px) { .calc-ui .card { padding:18px 14px; } .calc-ui .g { grid-template-columns:1fr; } }
+
 </style>
 </head>
 <body>
@@ -807,8 +840,8 @@ let D = {};
 function initData(raw) {
   D = raw || {};
   D.cfg = Object.assign({
-    pk: 20500, kwh: 140, model: 'Otro / Personalizado', w: 110,
-    life: 4320, parts: 150000, err: 5, rec: 30, mult: 5,
+    pk: 25000, kwh: 50, model: 'Otro / Personalizado', w: 220,
+    life: 4320, parts: 150000, err: 5, rec: 30, mult: 4,
     tallerName: '',
     aliasPago: '', cuentaNombre: '', cuit: '', direccion: '', telefono: '', email: ''
   }, D.cfg || {});
@@ -1073,203 +1106,124 @@ function crud(k) {
 }
 
 /* ========== CALCULADORA ========== */
+// Pure calculation: weight/time/extras describe the whole batch; quantity divides it.
+function calculate3D(v) {
+  const n = k => Math.max(0, Number(v[k]) || 0);
+  const hours = n('h') + n('min') / 60;
+  const mat = n('g') / 1000 * n('pk');
+  const luz = n('w') / 1000 * hours * n('kwh');
+  const des = n('wear') * hours;
+  const labor = n('laborRate') * n('laborHours');
+  const ins = n('ins');
+  const all = mat + luz + des + labor + ins;
+  const qty = Math.max(1, Math.floor(n('qty')));
+  return { mat, luz, des, labor, ins, cost:all, all, price:all*n('mult'), unit:all/qty, qty };
+}
+
 function calc() {
   const C = D.cfg;
-  Object.assign(C, { rec: C.rec ?? 30, mult: C.mult ?? 5 });
-
-  const profileOpts = D.profiles.map((p, i) =>
-    `<option value="${i}">${esc(p.name)}</option>`
-  ).join('');
-
+  // Draft belongs to this account's data and survives navigation; rendering is read-only.
+  const draft = D.calcDraft || {};
+  const defaults = { material:'PLA', g:50, h:2, min:30, pk:C.pk ?? 25000,
+    kwh:C.kwh ?? 50, w:C.w ?? 220, machineCost:C.machineCost ?? 855250,
+    wear:C.wear ?? ((C.machineCost ?? 855250)*1.2/3000),
+    laborRate:C.laborRate ?? 0, laborHours:0, ins:0, qty:1, mult:C.mult ?? 4,
+    model:C.model ?? 'Otro / Personalizado', qd:'', qc:'' };
+  const V = { ...defaults, ...draft };
+  // Shared settings may have been edited in Gastos fijos or loaded from a profile.
+  ['pk','kwh','w','model','mult','machineCost','wear','laborRate'].forEach(k => {
+    if (C[k] !== undefined) V[k] = C[k];
+  });
+  const help = t => `<span class="help" tabindex="0" title="${esc(t)}" aria-label="${esc(t)}">?</span>`;
+  const field = (key,label,unit='',hint='') => `<label>${label}${hint ? help(hint):''}<span class="field-unit"><input class="ci" id="c_${key}" type="number" min="${key==='qty'?1:0}" step="${key==='qty'?1:'any'}" value="${esc(V[key])}"><span class="unit">${unit}</span></span></label>`;
+  const profileOpts = D.profiles.map((p,i)=>`<option value="${i}">${esc(p.name)}</option>`).join('');
+  const models = [...new Set(['Otro / Personalizado', ...PR.map(p=>p[0]), V.model])];
   $('#m').innerHTML = `
+  <div class="calc-ui">
     <h2>Calculadora 3D</h2>
     <p class="s">Calculá el costo real de tus impresiones y el precio sugerido de venta.</p>
-
-    <div class="two">
-      <div>
-        <div class="card">
-          <div class="title">Perfil</div>
-          <div class="profile-bar">
-            <select id="profileSel">
-              <option value="">— Nuevo perfil —</option>
-              ${profileOpts}
-            </select>
-            <input id="profileName" placeholder="Nombre del perfil" style="flex:1;min-width:120px">
-          </div>
-          <button class="p" id="saveProfile" style="width:100%">💾 Guardar perfil</button>
+    <div class="calc-layout"><div>
+      <section class="card"><div class="title"><span class="section-icon">⬡</span>Material y Tiempo</div>
+        <div class="g">
+          <label>Tipo de material ${help('El precio por kg se puede editar para cualquier material.')}<select id="c_material">${[...new Set(['PLA','PETG','ABS','ASA','TPU','Otro',V.material])].map(m=>`<option ${m===V.material?'selected':''}>${esc(m)}</option>`).join('')}</select></label>
+          <label>Moneda ${help('Presupuestos y productos se guardan en pesos argentinos.')}<select aria-label="Moneda"><option>ARS ($) · Peso argentino</option></select></label>
+          ${field('g','Peso de la pieza','gramos','Peso total del lote.')}
+          ${field('pk','Precio del filamento','$/kg')}
+          ${field('h','Tiempo','horas')}${field('min','Tiempo','minutos')}
         </div>
-
-        <div class="card">
-          <div class="title">Gastos fijos</div>
-          <div class="g">
-            <label>Precio del filamento (AR$/kg)
-              <input class="ci" id="c_pk" type="number" step="any" value="${C.pk}">
-            </label>
-            <label>Precio del kWh (ARS)
-              <input class="ci" id="c_kwh" type="number" step="any" value="${C.kwh}">
-            </label>
-            <label>Modelo de impresora
-              <select id="c_model">
-                ${['Otro / Personalizado', ...PR.map(p => p[0])].map(o =>
-                  `<option ${o === C.model ? 'selected' : ''}>${o}</option>`
-                ).join('')}
-              </select>
-            </label>
-            <label>Consumo de la impresora (W)
-              <input class="ci" id="c_w" type="number" step="any" value="${C.w}">
-            </label>
-            <label>Vida útil de la máquina (horas)
-              <input class="ci" id="c_life" type="number" step="any" value="${C.life}">
-            </label>
-            <label>Costo de repuestos (ARS)
-              <input class="ci" id="c_parts" type="number" step="any" value="${C.parts}">
-            </label>
-            <label>Margen de error (%)
-              <input class="ci" id="c_err" type="number" step="any" value="${C.err}">
-            </label>
-            <label>Recargo insumos (%)
-              <input class="ci" id="c_rec" type="number" step="any" value="${C.rec}">
-            </label>
-          </div>
+      </section>
+      <section class="card"><div class="title"><span class="section-icon" style="color:#facc15">ϟ</span>Máquina y Energía</div>
+        <div class="model-guide"><label>Guía rápida por modelo (Auto-completar)<select id="c_model">${models.map(m=>`<option ${m===V.model?'selected':''}>${esc(m)}</option>`).join('')}</select></label></div>
+        <div class="g">
+          ${field('w','Consumo','watts')}${field('kwh','Costo kWh','$')}
+          ${field('machineCost','Costo de la impresora','$','Al editar el precio se recalcula el desgaste por hora.')}
+          ${field('wear','Desgaste máquina','$/h','Editable. Referencia: costo × 1,20 ÷ 3.000 horas.')}
         </div>
-
-        <div class="card">
-          <div class="title">Pieza</div>
-          <div class="g">
-            <label>Horas de impresión
-              <input class="ci" id="c_h" type="number" step="any" value="" placeholder="0">
-            </label>
-            <label>Minutos adicionales
-              <input class="ci" id="c_min" type="number" step="any" value="" placeholder="0">
-            </label>
-            <label>Gramos de filamento
-              <input class="ci" id="c_g" type="number" step="any" value="" placeholder="0">
-            </label>
-            <label>Insumos extra (ARS)
-              <input class="ci" id="c_ins" type="number" step="any" value="" placeholder="0">
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <div class="card">
-          <div class="title">Margen de ganancia</div>
-          <label>Multiplicador</label>
-          <div class="mu">
-            ${[2, 2.5, 3, 3.5, 4, 5].map(m =>
-              `<button class="mb ${C.mult === m ? 'on' : ''}" data-m="${m}">×${m}</button>`
-            ).join('')}
-          </div>
-          <label style="margin-top:14px">Personalizado
-            <span class="hint">Si necesitás otro valor, ingresalo acá (ej: 2.8).</span>
-            <input id="cm" type="number" step="any" value="${C.mult}">
-          </label>
-          <details style="margin-top:14px">
-            <summary style="color:var(--ac);cursor:pointer;font-size:13px;font-weight:500">Referencias</summary>
-            <ul class="rf">
-              <li>• ×2.0 → Alto volumen / descuento</li>
-              <li>• ×2.5 → Volumen medio</li>
-              <li>• ×3.0 → Mayorista</li>
-              <li>• ×3.5 → Intermedio</li>
-              <li>• ×4.0 → Minorista</li>
-              <li>• ×5.0 → Llaveros / piezas chicas</li>
-            </ul>
-          </details>
-        </div>
-
-        <div class="card">
-          <div class="title">Resultados</div>
-          <div id="rv"></div>
-          <div class="g" style="margin-top:16px">
-            <label>Nombre de la pieza
-              <input id="qd" placeholder="Ej: Llavero logo">
-            </label>
-            <label>Cliente (presupuesto)
-              <input id="qc" placeholder="Opcional">
-            </label>
-          </div>
-          <button class="p" id="sp" style="width:100%;margin-top:14px">💾 Guardar como producto</button>
-          <button class="s2" id="sq">Guardar como presupuesto</button>
-        </div>
-      </div>
+        <p class="calc-note">Desgaste/h = costo × 1,20 ÷ 3.000 h. El modelo completa el consumo de referencia y, si existe un perfil guardado con precio, también su costo. Todos los valores son editables.</p>
+      </section>
+      <section class="card"><div class="title"><span class="section-icon" style="color:#c084fc">♧</span>Mano de Obra y Extras</div>
+        <div class="g">${field('laborRate','Mano de obra','$/h')}${field('laborHours','Horas de trabajo','h')}${field('ins','Extras','$ total')}</div>
+        <p class="calc-note">La mano de obra se calcula aparte: horas de trabajo por valor por hora. Ese resultado se suma al costo total.</p>
+      </section>
+      <section class="card"><div class="title"><span class="section-icon" style="color:#60a5fa">▥</span>Ajustes Finales</div>
+        <div class="g"><label>Margen de ganancia ${help('Multiplica el costo total, incluidos mano de obra y extras.')}<select id="marginPreset">${[2,2.5,3,3.5,4,5].map(m=>`<option value="${m}" ${+V.mult===m?'selected':''}>x${m}${m===4?' - Estándar':''}</option>`).join('')}<option value="custom" ${![2,2.5,3,3.5,4,5].includes(+V.mult)?'selected':''}>Personalizado</option></select></label>${field('qty','Cantidad de piezas')}</div>
+        <label id="customMargin" ${[2,2.5,3,3.5,4,5].includes(+V.mult)?'hidden':''}>Multiplicador personalizado<input id="cm" type="number" min="0" step="any" value="${esc(V.mult)}"></label>
+        <p class="calc-note">La cantidad de piezas se usa solo para dividir el costo total y mostrar el costo por unidad.</p>
+      </section>
+      <details class="card"><summary>Perfiles guardados</summary><div class="profile-bar"><select id="profileSel"><option value="">— Nuevo perfil —</option>${profileOpts}</select><input id="profileName" placeholder="Nombre del perfil"></div><button class="p" id="saveProfile">💾 Guardar perfil</button></details>
     </div>
-  `;
-
-  let lastPrice = 0;
-
+    <div class="calc-summary"><section class="card"><div class="title">Resumen del Presupuesto</div><hr><div id="rv" aria-live="polite"></div>
+      <div class="g" style="margin-top:20px"><label>Nombre de la pieza<input id="qd" value="${esc(V.qd)}" placeholder="Ej: Llavero logo"></label><label>Cliente (presupuesto)<input id="qc" value="${esc(V.qc)}" placeholder="Opcional"></label></div>
+      <button class="p" id="sp" style="width:100%;margin-top:14px">💾 Guardar como producto</button><button class="s2" id="sq">Guardar como presupuesto</button>
+    </section></div></div>
+  </div>`;
+  const keys=['g','h','min','pk','kwh','w','machineCost','wear','laborRate','laborHours','ins','qty'];
+  const read = () => {
+    const v = Object.fromEntries(keys.map(k=>[k,Math.max(0,Number($('#c_'+k).value)||0)]));
+    return {...v, mult:Math.max(0,Number($('#cm').value)||0), material:$('#c_material').value,
+      model:$('#c_model').value, qd:$('#qd').value, qc:$('#qc').value};
+  };
   const up = () => {
-    C.pk = +$('#c_pk').value || 0;
-    C.kwh = +$('#c_kwh').value || 0;
-    C.w = +$('#c_w').value || 0;
-    C.life = +$('#c_life').value || 1;
-    C.parts = +$('#c_parts').value || 0;
-    C.err = +$('#c_err').value || 0;
-    C.rec = +$('#c_rec').value || 0;
-    C.model = $('#c_model').value;
-    save();
-
-    const h = (+$('#c_h').value || 0) + ((+$('#c_min').value || 0) / 60);
-    const g = +$('#c_g').value || 0;
-    const insRaw = +$('#c_ins').value || 0;
-
-    const mat = (g / 1000) * C.pk;
-    const luz = (C.w / 1000) * h * C.kwh;
-    const des = (C.parts / (C.life || 1)) * h;
-    const err = (mat + luz + des) * C.err / 100;
-    const cost = mat + luz + des + err;
-    const ins = insRaw * (1 + C.rec / 100);
-    const price = cost * C.mult + ins;
-    const all = cost + ins;
-
-    const r = (a, b, strong) =>
-      `<div class="rw"><span>${a}</span>${strong ? `<b>${b}</b>` : `<span style="color:var(--tx)">${b}</span>`}</div>`;
-
-    const changed = Math.abs(price - lastPrice) > 0.5;
-    lastPrice = price;
-
-    $('#rv').innerHTML =
-      r('Precio material', money2(mat)) +
-      r('Precio luz', money2(luz)) +
-      r('Desgaste máquina', money2(des)) +
-      r('Margen de error', money2(err)) +
-      '<hr>' +
-      r('Costo total (sin insumos)', money2(cost), true) +
-      r(`Insumos (+${C.rec}%)`, money2(ins)) +
-      `<div class="bx total ${changed ? 'pulse' : ''}">
-        <small>Total a cobrar</small>
-        <div>${money2(price)}</div>
-      </div>`;
-
-    window.__lastCalc = { price, all, cost, ins };
+    const v=read(), r=calculate3D(v);
+    const currency=n=>'$ '+n.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const row=(name,value,cls='')=>`<div class="rw ${cls}"><span>${name}</span><b>${currency(value)}</b></div>`;
+    $('#rv').innerHTML=row('Costo de material:',r.mat)+row('Electricidad:',r.luz)+row('Amortización / desgaste:',r.des)+row('Mano de obra:',r.labor,'labor')+row('Extras:',r.ins)+'<hr>'+row('Costo total:',r.all)+`<div class="sale-box">Venta sugerida<strong>${currency(r.price)}</strong></div><div class="summary-mini"><div><small>Costo por unidad</small><b>${currency(r.unit)}</b></div><div><small>Margen aplicado</small><b>x${v.mult}</b></div></div>`;
+    window.__lastCalc=r;
   };
-
-  const setM = m => {
-    C.mult = m;
-    save();
-    $('#cm').value = m;
-    $$('.mb').forEach(b => b.classList.toggle('on', +b.dataset.m === m));
-    up();
+  const commit = key => {
+    const v=read();
+    D.calcDraft=v;
+    // Only the setting actually edited is changed. No blanket rewrite on render.
+    if (['pk','kwh','w','model','mult','machineCost','wear','laborRate'].includes(key)) C[key]=v[key];
+    save(); up();
   };
-
-  $$('.mb').forEach(b => b.onclick = () => setM(+b.dataset.m));
-  $('#cm').oninput = e => {
-    C.mult = +e.target.value || 0;
-    save();
-    $$('.mb').forEach(b => b.classList.toggle('on', +b.dataset.m === C.mult));
-    up();
+  keys.forEach(k=>$('#c_'+k).oninput=()=>{
+    if(k==='machineCost') {
+      $('#c_wear').value=Number((Math.max(0,Number($('#c_machineCost').value)||0)*1.2/3000).toFixed(8));
+      C.wear=Number($('#c_wear').value);
+    }
+    commit(k);
+  });
+  $('#c_material').onchange=()=>commit('material');
+  ['qd','qc'].forEach(k=>$('#'+k).oninput=()=>commit(k));
+  $('#marginPreset').onchange=e=>{
+    const custom=e.target.value==='custom';
+    $('#customMargin').hidden=!custom;
+    if(!custom) { $('#cm').value=e.target.value; commit('mult'); }
   };
-
-  $('#c_model').onchange = e => {
-    const p = PR.find(x => x[0] === e.target.value);
-    if (p) { $('#c_w').value = p[5]; C.w = p[5]; }
-    C.model = e.target.value;
-    save();
-    up();
+  $('#cm').oninput=()=>commit('mult');
+  $('#c_model').onchange=e=>{
+    const p=PR.find(x=>x[0]===e.target.value);
+    if(p) { $('#c_w').value=p[5]; C.w=p[5]; }
+    const saved=D.profiles.find(p=>p.cfg?.model===e.target.value && Number.isFinite(p.cfg.machineCost));
+    if(saved) {
+      $('#c_machineCost').value=saved.cfg.machineCost;
+      $('#c_wear').value=saved.cfg.wear ?? saved.cfg.machineCost*1.2/3000;
+      C.machineCost=Number($('#c_machineCost').value); C.wear=Number($('#c_wear').value);
+    }
+    commit('model');
   };
-
-  $$('.ci').forEach(i => i.oninput = up);
-  setM(C.mult);
+  up();
 
   // Profiles
   $('#profileSel').onchange = e => {
@@ -1300,8 +1254,8 @@ function calc() {
     const { price, all } = window.__lastCalc || { price: 0, all: 0 };
     get('products').push({
       name: $('#qd').value || 'Pieza',
-      cost: Math.round(all),
-      price: Math.round(price)
+      cost: Math.round(all * 100) / 100,
+      price: Math.round(price * 100) / 100
     });
     save();
     toast('Producto guardado');
@@ -1315,7 +1269,7 @@ function calc() {
       date: new Date().toISOString().slice(0, 10),
       client: $('#qc').value || 'Sin cliente',
       desc: $('#qd').value || 'Pieza',
-      total: Math.round(price),
+      total: Math.round(price * 100) / 100,
       status: 'Pendiente'
     });
     save();
@@ -1496,7 +1450,7 @@ function generateInvoice(q) {
   .pay .alias { font-size: 18px; font-weight: 700; letter-spacing: 0.02em; }
   .pay p { font-size: 12px; color: #71717a; margin-top: 4px; }
   .footer { font-size: 11px; color: #a1a1aa; text-align: center; margin-top: 32px; }
-  .actions { text-align: center; margin: 24px 0; }
+  .actions { display:flex; flex-wrap:wrap; justify-content:center; gap:12px; margin:24px 0; }
   .actions button {
     background: #e11d48; color: #fff; border: 0; border-radius: 10px;
     padding: 12px 28px; font-size: 14px; font-weight: 600; cursor: pointer;
@@ -1511,6 +1465,7 @@ function generateInvoice(q) {
 </head>
 <body>
   <div class="actions">
+    <button id="return-app" type="button">← Volver a Emprendimientos 3D</button>
     <button onclick="window.print()">🖨 Imprimir / Guardar como PDF</button>
   </div>
   <div class="sheet">
@@ -1597,6 +1552,12 @@ function generateInvoice(q) {
   }
   w.document.write(html);
   w.document.close();
+  w.document.getElementById('return-app').onclick = () => {
+    cur = 'calc';
+    render();
+    window.focus();
+    w.close();
+  };
 }
 
 function quotes() {
