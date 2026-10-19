@@ -701,6 +701,27 @@ button.danger:hover { background: #dc2626; transform: translateY(-1px); }
 @media(max-width:1050px) { .calc-ui .calc-layout { grid-template-columns:1fr; } .calc-ui .calc-summary { position:static; } }
 @media(max-width:480px) { .calc-ui .card { padding:18px 14px; } .calc-ui .g { grid-template-columns:1fr; } }
 
+/* Scoped product catalog */
+#products-ui .product-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr)); gap:18px; }
+#products-ui .product-card { min-width:0; overflow:hidden; border:1px solid var(--bd); border-radius:var(--radius); background:var(--card); }
+#products-ui .product-photo { aspect-ratio:4/3; background:radial-gradient(ellipse at top,var(--ac-dim),var(--card2)); display:flex; align-items:center; justify-content:center; flex-direction:column; color:var(--mu); overflow:hidden; }
+#products-ui .product-photo span { font-size:60px; color:var(--ac); }
+#products-ui .product-photo img { width:100%; height:100%; object-fit:contain; }
+#products-ui .product-body { padding:18px; }
+#products-ui h3 { font-size:17px; margin-bottom:16px; overflow-wrap:anywhere; }
+#products-ui dl > div { display:flex; justify-content:space-between; gap:12px; margin-bottom:8px; flex-wrap:wrap; }
+#products-ui dt { color:var(--mu); }
+#products-ui dd { margin:0; font-weight:650; overflow-wrap:anywhere; }
+#products-ui .product-gain { border-top:1px solid var(--bd); padding-top:12px; margin-top:12px; color:var(--ok); font-size:18px; }
+#products-ui .product-gain dt { color:inherit; }
+#products-ui .negative { color:#fca5a5; }
+#products-ui .product-margin { color:var(--mu); font-size:12px; margin-bottom:16px; }
+#products-ui .product-upload { color:var(--tx); }
+#products-ui input[type=file] { font-size:12px; max-width:100%; }
+#products-ui .product-delete { font-size:12px; margin-top:12px; }
+#products-ui .product-status { color:var(--mu); margin-bottom:16px; overflow-wrap:anywhere; }
+#products-ui button:disabled, #products-ui input:disabled { opacity:.55; cursor:wait; }
+
 </style>
 </head>
 <body>
@@ -1062,8 +1083,174 @@ function render() {
   else if (cur === 'fixed') fixed();
   else if (cur === 'stock') stock();
   else if (cur === 'quotes') quotes();
+  else if (cur === 'products') products();
   else crud(cur);
 }
+
+/* Product photos: private Storage objects; only their short paths live in JSON. */
+const PRODUCT_BUCKET = 'product-photos';
+let productBusy = false;
+function productPhotoPath(path, userId) {
+  return typeof path === 'string' && path.startsWith(userId + '/') &&
+    /^[a-zA-Z0-9/-]+\.jpg$/.test(path) && !path.includes('..');
+}
+async function compressProductPhoto(file) {
+  if (!['image/jpeg','image/png','image/webp'].includes(file.type))
+    throw new Error('Elegí una imagen JPG, PNG o WebP.');
+  if (file.size > 10 * 1024 * 1024) throw new Error('La imagen debe pesar menos de 10 MB.');
+  const bitmap = await createImageBitmap(file);
+  try {
+    if (bitmap.width * bitmap.height > 40000000) throw new Error('La imagen es demasiado grande (máximo 40 megapíxeles).');
+    const scale = Math.min(1, 1000 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#1a1a1e'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    for (const quality of [.82, .65, .45]) {
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+      if (blob && blob.size <= 512 * 1024) return blob;
+    }
+    throw new Error('No se pudo reducir la foto a 512 KB. Probá con otra imagen.');
+  } finally { bitmap.close(); }
+}
+
+// Compare-and-swap keeps a stale catalog from overwriting a newer cloud version.
+// No schema changes, no IDs assigned to existing records, no bulk replacement of products.
+async function persistProductChange(rows, before, next, userId, state) {
+  if (saveTimer) await new Promise(resolve => setTimeout(resolve, 800));
+  if (currentUser?.id !== userId || D !== state) throw new Error('La sesión cambió. Volvé a abrir Productos.');
+  const { data: record, error } = await sb.from('user_data').select('id,data').eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  if (!record) throw new Error('Primero esperá a que se sincronicen los datos de tu cuenta y reintentá.');
+  if (JSON.stringify(record.data.products || []) !== before || JSON.stringify(rows) !== before)
+    throw new Error('El catálogo cambió. Recargá la página para traer la última versión antes de reintentar.');
+  const merged = { ...record.data, products: next };
+  const result = await sb.from('user_data').update({ data: merged, updated_at: new Date().toISOString() })
+    .eq('user_id', userId).eq('id', record.id).eq('data', JSON.stringify(record.data)).select('id');
+  if (result.error) throw result.error;
+  if (!result.data?.length) throw new Error('Los datos cambiaron mientras guardabas. Recargá y reintentá.');
+  if (currentUser?.id === userId && D === state) rows.splice(0, rows.length, ...next);
+}
+
+async function productChange({ row, file, removePhoto = false, newProduct, deleteProduct = false }) {
+  if (productBusy) return;
+  const userId = currentUser?.id, state = D, rows = get('products');
+  if (!userId) return;
+  productBusy = true;
+  document.querySelectorAll('nav button, #btn-logout').forEach(el => el.disabled = true);
+  const root = $('#products-ui');
+  root?.querySelectorAll('button,input').forEach(el => el.disabled = true);
+  const status = root?.querySelector('[role="status"]');
+  if (status) status.textContent = 'Guardando…';
+  let uploaded;
+  try {
+    const before = JSON.stringify(rows);
+    const index = row ? rows.indexOf(row) : -1;
+    if (row && index < 0) throw new Error('El producto ya no está en el catálogo.');
+    if (file) {
+      const blob = await compressProductPhoto(file);
+      if (currentUser?.id !== userId || D !== state) throw new Error('La sesión cambió. Reintentá.');
+      uploaded = userId + '/' + crypto.randomUUID() + '.jpg';
+      const { error } = await sb.storage.from(PRODUCT_BUCKET).upload(uploaded, blob, { contentType: 'image/jpeg', upsert: false });
+      if (error) { uploaded = null; throw new Error('No se pudo subir la foto. Verificá tu conexión y que el bucket privado product-photos tenga permisos para tu cuenta.'); }
+    }
+    const next = rows.slice();
+    if (newProduct) next.push({ ...newProduct, ...(uploaded ? { photoPath: uploaded } : {}) });
+    else if (deleteProduct) next.splice(index, 1);
+    else {
+      next[index] = { ...row };
+      if (removePhoto) delete next[index].photoPath;
+      else next[index].photoPath = uploaded;
+    }
+    await persistProductChange(rows, before, next, userId, state);
+    // Keep previous objects: deleting them here could break another session's references.
+    // Detached photos can be cleaned up separately after confirming no product references them.
+    uploaded = null;
+    if (currentUser?.id === userId && D === state) {
+      if (cur === 'products') products();
+      toast('Guardado en la nube');
+    }
+  } catch (error) {
+    // Do not delete an upload on an ambiguous network failure: the DB may have committed it.
+    if (status?.isConnected) status.textContent = error.message || 'No se pudo guardar. Reintentá.';
+  } finally {
+    productBusy = false;
+    document.querySelectorAll('nav button, #btn-logout').forEach(el => el.disabled = false);
+    if (currentUser?.id === userId && D === state)
+      $('#products-ui')?.querySelectorAll('button,input').forEach(el => el.disabled = false);
+  }
+}
+
+async function loadProductPhotos(root, rows, userId) {
+  await Promise.all(rows.map(async (row, i) => {
+    if (!productPhotoPath(row.photoPath, userId)) return;
+    const holder = root.querySelector('[data-photo="' + i + '"]');
+    try {
+      const { data, error } = await sb.storage.from(PRODUCT_BUCKET).createSignedUrl(row.photoPath, 3600);
+      if (error) throw error;
+      if (!holder?.isConnected || currentUser?.id !== userId) return;
+      const img = document.createElement('img');
+      img.alt = row.name || 'Producto'; img.loading = 'lazy';
+      img.onerror = () => { holder.textContent = 'Foto no disponible'; };
+      img.src = data.signedUrl;
+      holder.replaceChildren(img);
+    } catch (_) { if (holder?.isConnected) holder.textContent = 'Foto no disponible'; }
+  }));
+}
+
+function products() {
+  const rows = get('products');
+  $('#m').innerHTML = `<section id="products-ui">
+    <h2>Productos</h2><p class="s">Tu biblioteca de piezas, con sus costos y ganancias.</p>
+    <form class="card" id="product-form">
+      <div class="title">Nuevo producto</div><div class="g">
+        <label>Nombre<input name="name" required maxlength="250"></label>
+        <label>Costo (AR$)<input name="cost" type="number" min="0" step="any" required></label>
+        <label>Precio de venta (AR$)<input name="price" type="number" min="0" step="any" required></label>
+        <label>Foto opcional<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
+      </div><p class="hint">JPG, PNG o WebP, hasta 10 MB. La foto se optimiza automáticamente.</p>
+      <button class="p" style="margin-top:16px">Agregar producto</button>
+    </form>
+    <p class="product-status" role="status" aria-live="polite"></p>
+    <div class="product-grid">${rows.map((p,i) => {
+      const gain = Number(p.price || 0) - Number(p.cost || 0);
+      const margin = Number(p.price) > 0 ? (gain / Number(p.price) * 100).toFixed(1) + '%' : '—';
+      return `<article class="product-card">
+        <div class="product-photo" data-photo="${i}"><span aria-hidden="true">◇</span><small>${p.photoPath ? 'Cargando foto…' : 'Sin foto'}</small></div>
+        <div class="product-body"><h3>${esc(p.name)}</h3>
+          <dl><div><dt>Costo</dt><dd>${money2(Number(p.cost || 0))}</dd></div>
+          <div><dt>Precio de venta</dt><dd>${money2(Number(p.price || 0))}</dd></div>
+          <div class="product-gain ${gain < 0 ? 'negative' : ''}"><dt>Ganancia</dt><dd>${money2(gain)}</dd></div></dl>
+          <p class="product-margin">Margen sobre venta: ${margin}</p>
+          <label class="product-upload">${p.photoPath ? 'Cambiar foto' : 'Agregar foto'}<input type="file" data-upload="${i}" accept="image/jpeg,image/png,image/webp" aria-label="Foto de ${esc(p.name)}"></label>
+          ${p.photoPath ? `<button class="s2" data-remove-photo="${i}">Quitar foto</button>` : ''}
+          <button type="button" class="x product-delete" data-delete-product="${i}">Eliminar producto</button>
+        </div></article>`;
+    }).join('') || '<div class="card"><p>Todavía no hay productos. Agregá tu primera pieza acá o guardala desde la calculadora.</p></div>'}</div>
+  </section>`;
+  const root = $('#products-ui');
+  $('#product-form').onsubmit = e => {
+    e.preventDefault();
+    const f = e.currentTarget.elements;
+    const name = f.namedItem('name').value.trim(), cost = Number(f.cost.value), price = Number(f.price.value);
+    if (!name || !Number.isFinite(cost) || !Number.isFinite(price) || cost < 0 || price < 0) return;
+    productChange({ newProduct: { name, cost, price }, file: f.photo.files[0] });
+  };
+  root.querySelectorAll('[data-upload]').forEach(input => input.onchange = () => {
+    const file = input.files[0]; input.value = '';
+    if (file) productChange({ row: rows[Number(input.dataset.upload)], file });
+  });
+  root.querySelectorAll('[data-remove-photo]').forEach(b => b.onclick = () => productChange({ row: rows[Number(b.dataset.removePhoto)], removePhoto: true }));
+  root.querySelectorAll('[data-delete-product]').forEach(b => b.onclick = () => {
+    const row = rows[Number(b.dataset.deleteProduct)];
+    if (confirm('¿Eliminar el producto "' + row.name + '"? Esta acción no se puede deshacer.')) productChange({ row, deleteProduct: true });
+  });
+  if (productBusy) root.querySelectorAll('button,input').forEach(el => el.disabled = true);
+  loadProductPhotos(root, rows, currentUser?.id);
+}
+
 
 function crud(k) {
   const c = M[k], rows = get(k), ex = c.x;
