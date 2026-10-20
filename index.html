@@ -885,19 +885,23 @@ const save = () => {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
     try {
-      const { data: existing } = await sb.from('user_data')
+      const { data: existing, error: readError } = await sb.from('user_data')
         .select('id').eq('user_id', currentUser.id).maybeSingle();
+      if (readError) throw readError; // Un error de lectura no significa que falte la fila.
       if (existing?.id) {
         const { error } = await sb.from('user_data')
           .update({ data: D, updated_at: new Date().toISOString() })
           .eq('user_id', currentUser.id);
-        if (error) console.warn('Cloud update:', error.message);
+        if (error) throw error;
       } else {
         const { error } = await sb.from('user_data')
           .insert({ user_id: currentUser.id, data: D, updated_at: new Date().toISOString() });
-        if (error) console.warn('Cloud insert:', error.message);
+        if (error) throw error;
       }
-    } catch (e) { console.warn('Cloud save failed', e); }
+    } catch (e) {
+      console.warn('Cloud save failed:', e.message);
+      toast('No se pudo guardar en la nube. Revisá tu conexión y reintentá.');
+    }
   }, 600);
 };
 
@@ -1116,21 +1120,25 @@ async function compressProductPhoto(file) {
   } finally { bitmap.close(); }
 }
 
-// Compare-and-swap keeps a stale catalog from overwriting a newer cloud version.
+// Compare-and-swap uses a short timestamp, never the JSON document in the URL.
 // No schema changes, no IDs assigned to existing records, no bulk replacement of products.
 async function persistProductChange(rows, before, next, userId, state) {
   if (saveTimer) await new Promise(resolve => setTimeout(resolve, 800));
   if (currentUser?.id !== userId || D !== state) throw new Error('La sesión cambió. Volvé a abrir Productos.');
-  const { data: record, error } = await sb.from('user_data').select('id,data').eq('user_id', userId).maybeSingle();
+  const { data: record, error } = await sb.from('user_data').select('id,data,updated_at').eq('user_id', userId).maybeSingle();
   if (error) throw error;
   if (!record) throw new Error('Primero esperá a que se sincronicen los datos de tu cuenta y reintentá.');
   if (JSON.stringify(record.data.products || []) !== before || JSON.stringify(rows) !== before)
     throw new Error('El catálogo cambió. Recargá la página para traer la última versión antes de reintentar.');
   const merged = { ...record.data, products: next };
-  const result = await sb.from('user_data').update({ data: merged, updated_at: new Date().toISOString() })
-    .eq('user_id', userId).eq('id', record.id).eq('data', JSON.stringify(record.data)).select('id');
+  let update = sb.from('user_data').update({ data: merged, updated_at: new Date().toISOString() })
+    .eq('user_id', userId).eq('id', record.id);
+  update = record.updated_at == null
+    ? update.is('updated_at', null)
+    : update.eq('updated_at', record.updated_at);
+  const result = await update.select('id');
   if (result.error) throw result.error;
-  if (!result.data?.length) throw new Error('Los datos cambiaron mientras guardabas. Recargá y reintentá.');
+  if (result.data?.length !== 1) throw new Error('No se confirmó el guardado: los datos cambiaron o faltan permisos. Recargá y reintentá.');
   if (currentUser?.id === userId && D === state) rows.splice(0, rows.length, ...next);
 }
 
