@@ -1459,11 +1459,13 @@ function calc() {
   };
 
   $('#sq').onclick = () => {
-    const { price } = window.__lastCalc || { price: 0 };
+    const { price, qty = 1 } = window.__lastCalc || { price: 0 };
     get('quotes').push({
       date: new Date().toISOString().slice(0, 10),
       client: $('#qc').value || 'Sin cliente',
       desc: $('#qd').value || 'Pieza',
+      qty,
+      unitPrice: price / qty,
       total: Math.round(price * 100) / 100,
       status: 'Pendiente'
     });
@@ -1594,8 +1596,16 @@ function stock() {
 }
 
 /* ========== PRESUPUESTOS ========== */
+// Los presupuestos anteriores equivalen a una unidad; no se modifica su total.
+function quoteDetails(q) {
+  const qty = Number.isSafeInteger(q.qty) && q.qty > 0 ? q.qty : 1;
+  const unitPrice = Number.isFinite(q.unitPrice) ? q.unitPrice : (Number(q.total) || 0) / qty;
+  return { qty, unitPrice };
+}
+
 function generateInvoice(q) {
   const C = D.cfg;
+  const { qty, unitPrice } = quoteDetails(q);
   const num = String(q.receiptNumber || '').trim() || String(q.num || (D.quoteCounter || 1)).padStart(4, '0');
   const fecha = q.date || new Date().toISOString().slice(0,10);
   const fechaFmt = new Date(fecha + 'T12:00:00').toLocaleDateString('es-AR', { day:'2-digit', month:'long', year:'numeric' });
@@ -1700,30 +1710,30 @@ function generateInvoice(q) {
       <thead>
         <tr>
           <th>Descripción</th>
-          <th class="right">Cant.</th>
-          <th class="right">Precio</th>
+          <th class="right">Cantidad</th>
+          <th class="right">Precio por unidad</th>
           <th class="right">Subtotal</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td>${esc(q.desc || 'Pieza impresa en 3D')}</td>
-          <td class="right">1</td>
-          <td class="right">${money(q.total)}</td>
-          <td class="right">${money(q.total)}</td>
+          <td class="right">${qty}</td>
+          <td class="right">${money2(unitPrice)}</td>
+          <td class="right">${money2(q.total)}</td>
         </tr>
       </tbody>
     </table>
 
     <div class="total-box">
       <span class="lbl">Total a pagar</span>
-      <span class="val">${money(q.total)}</span>
+      <span class="val">${money2(q.total)}</span>
     </div>
 
     ${C.aliasPago || C.cuentaNombre ? `
     <div class="pay">
       <h3>Datos de pago</h3>
-      ${C.aliasPago ? `<div class="alias">${esc(C.aliasPago)}</div>` : ''}
+      ${C.aliasPago ? `<div class="alias">Alias: ${esc(C.aliasPago)}</div>` : ''}
       ${C.cuentaNombre ? `<p>Cuenta a nombre de: <strong>${esc(C.cuentaNombre)}</strong></p>` : ''}
       ${C.aliasPago ? '<p>Transferí el monto exacto a este alias. Una vez acreditado te confirmamos el pedido.</p>' : ''}
     </div>` : `
@@ -1816,7 +1826,9 @@ function quotes() {
               </select>
             </label>
             <label>Detalle / Descripción<input id="q_desc" placeholder="Se completa si elegís producto"></label>
-            <label>Precio (ARS)<input id="q_total" type="number" step="any" value="0"></label>
+            <label>Cantidad<input id="q_qty" type="number" min="1" step="1" value="1" required></label>
+            <label>Precio por unidad (ARS)<input id="q_unit" type="number" min="0" step="0.01" value="0" required></label>
+            <label>Total final (ARS)<input id="q_total" type="number" step="0.01" value="0.00" readonly aria-live="polite"></label>
             <label>Fecha<input id="q_date" type="date"></label>
             <label>Número de comprobante (opcional)<input id="q_receipt" type="text" placeholder="Ej.: 0001-00001234 · vacío: automático"></label>
           </div>
@@ -1879,13 +1891,25 @@ function quotes() {
       toast('Datos del taller guardados');
     };
 
+    const updateQuoteTotal = () => {
+      const qty = Number($('#q_qty').value), unitPrice = Number($('#q_unit').value);
+      const total = qty * unitPrice;
+      const valid = $('#q_qty').checkValidity() && $('#q_unit').checkValidity() &&
+        Number.isSafeInteger(qty) && qty > 0 && Number.isFinite(total) && total >= 0;
+      $('#q_total').value = valid ? (Math.round(total * 100) / 100).toFixed(2) : '';
+      return valid;
+    };
+    $('#q_qty').oninput = updateQuoteTotal;
+    $('#q_unit').oninput = updateQuoteTotal;
+
     $('#q_prod').onchange = e => {
       const i = e.target.value;
       if (i === '') return;
       const p = products[+i];
       if (p) {
         $('#q_desc').value = p.name;
-        $('#q_total').value = p.price;
+        $('#q_unit').value = (Number(p.price) || 0).toFixed(2);
+        updateQuoteTotal();
       }
     };
 
@@ -1896,6 +1920,7 @@ function quotes() {
       listEl.innerHTML = list.map((r, idx) => {
         const realIdx = rows.indexOf(r);
         const isSold = r.status === 'Vendido';
+        const detail = quoteDetails(r);
         return `
           <div class="quote-item" style="animation-delay:${idx*0.04}s">
             <div class="left">
@@ -1905,9 +1930,10 @@ function quotes() {
                 ${r.receiptNumber || r.num ? `<span style="font-size:11px;color:var(--mu)">#${esc(r.receiptNumber || String(r.num).padStart(4,'0'))}</span>` : ''}
               </div>
               <div class="meta">${esc(r.date || '')} · ${esc(r.desc || '')}</div>
+              <div class="meta">Cantidad: ${detail.qty} · Precio por unidad: ${money2(detail.unitPrice)}</div>
             </div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <b style="font-size:16px">${money(r.total)}</b>
+              <b style="font-size:16px">Total: ${money2(r.total)}</b>
               <button class="s2" style="width:auto;margin:0;padding:6px 12px;font-size:12px" data-receipt="${realIdx}">N° comprobante</button>
               <button class="s2" style="width:auto;margin:0;padding:6px 12px;font-size:12px" data-pdf="${realIdx}">📄 Factura</button>
               ${!isSold ? `<button class="s2" style="width:auto;margin:0;padding:6px 12px;font-size:12px" data-sell="${realIdx}">Marcar vendido</button>` : ''}
@@ -1924,6 +1950,10 @@ function quotes() {
     });
 
     $('#q_add').onclick = () => {
+      if (!updateQuoteTotal()) {
+        toast('Ingresá una cantidad entera mayor a cero y un precio válido (hasta 2 decimales).');
+        return;
+      }
       const num = D.quoteCounter || 1;
       D.quoteCounter = num + 1;
       rows.push({
@@ -1932,6 +1962,8 @@ function quotes() {
         date: $('#q_date').value || new Date().toISOString().slice(0,10),
         client: $('#q_client').value || 'Sin cliente',
         desc: $('#q_desc').value || 'Pieza',
+        qty: Number($('#q_qty').value),
+        unitPrice: Number($('#q_unit').value),
         total: +$('#q_total').value || 0,
         status: 'Pendiente'
       });
@@ -1965,7 +1997,7 @@ function quotes() {
       get('sales').push({
         date: rows[i].date,
         name: rows[i].desc,
-        qty: 1,
+        qty: quoteDetails(rows[i]).qty,
         total: rows[i].total,
         cost: Math.round(rows[i].total * 0.4)
       });
