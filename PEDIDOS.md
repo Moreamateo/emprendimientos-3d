@@ -21,7 +21,7 @@ Las fotos usan las referencias de Storage y URLs firmadas existentes; no se copi
 - SDK real de Supabase con transporte simulado: cuerpo PATCH, URL corta, filtros de usuario y timestamp, denegación RLS y preservación de otros datos.
 - Diseño móvil de 390 px y escritorio. No se realizaron escrituras de prueba en una cuenta real.
 
-Publicar juntos `index.html`, `orders.js`, `orders.css`, `sales-edit.js` y `commerce-maintenance.js`.
+Publicar juntos `index.html`, `navigation.js`, `orders.js`, `orders.css`, `sales-edit.js` y `commerce-maintenance.js`.
 
 ## Corregir ventas
 
@@ -40,3 +40,11 @@ Las ventas de versiones antiguas se vinculan por detalle, fecha, cantidad e impo
 ## Kilos de stock
 
 En **Stock → Modificar kilos**, ingresá los kilos restantes de ese material (por ejemplo, `0,750` para 750 g) y, si hace falta, su capacidad total. Se admite cero para un material agotado. El restante no puede superar la capacidad. El guardado conserva los demás datos del material y admite registros antiguos en kg y actuales en gramos, incluyendo Otros materiales.
+
+## Páginas y actualización sin reiniciar
+
+Cada apartado tiene su propia dirección: `#/calculadora`, `#/gastos-fijos`, `#/presupuestos`, `#/productos`, `#/pedidos`, `#/stock`, `#/ventas` y `#/estadisticas`. Se pueden guardar como favoritos, abrir en otra pestaña y usar con Atrás/Adelante. Al recargar o iniciar sesión desde un enlace, se conserva el apartado indicado en la dirección. Las rutas funcionan en hosting estático sin configurar redirecciones.
+
+El menú cambia de página sin volver a descargar toda la aplicación. Antes de traer los datos recientes se terminan los guardados pendientes. El botón **Actualizar datos** vuelve a consultar la cuenta y actualiza el apartado actual, sin recargar el navegador. Si falla la lectura, se conservan los datos que ya estaban cargados y se muestra el error. Este botón recarga datos guardados; no guarda formularios que todavía no enviaste.
+
+Los guardados de ventas, pedidos, productos y stock actualizan su vista al confirmarse; no hace falta recargar. La dirección del apartado no añade registros a Supabase ni guarda datos privados en la URL.

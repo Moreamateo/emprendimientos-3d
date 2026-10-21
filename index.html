@@ -55,7 +55,8 @@ aside h1 {
 aside h1 span { color: var(--ac); }
 
 nav { display: flex; flex-direction: column; gap: 2px; }
-nav button {
+nav a {
+  text-decoration:none;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -71,13 +72,13 @@ nav button {
   cursor: pointer;
   transition: all 0.18s ease;
 }
-nav button:hover { background: var(--card2); color: var(--tx); }
-nav button.on {
+nav a:hover { background: var(--card2); color: var(--tx); }
+nav a.on {
   background: var(--ac-dim);
   color: var(--ac);
   font-weight: 600;
 }
-nav button .ico { font-size: 16px; width: 20px; text-align: center; }
+nav a .ico { font-size: 16px; width: 20px; text-align: center; }
 
 main {
   flex: 1;
@@ -555,7 +556,7 @@ button.danger:hover { background: #dc2626; transform: translateY(-1px); }
     padding-bottom: 6px;
     -webkit-overflow-scrolling: touch;
   }
-  nav button {
+  nav a {
     width: auto;
     white-space: nowrap;
     padding: 8px 12px;
@@ -589,7 +590,7 @@ button.danger:hover { background: #dc2626; transform: translateY(-1px); }
   .k { font-size: 22px; }
 }
 @media (max-width: 420px) {
-  nav button .ico { display: none; }
+  nav a .ico { display: none; }
   main { padding: 12px 10px 24px; }
   .bx div { font-size: 20px; }
 }
@@ -752,6 +753,8 @@ button.danger:hover { background: #dc2626; transform: translateY(-1px); }
   <nav id="nav"></nav>
   <div class="user-bar">
     <div id="user-email" style="margin-bottom:4px;word-break:break-all"></div>
+    <button id="btn-refresh" type="button">Actualizar datos</button>
+    <span id="page-sync-status" role="status" aria-live="polite"></span>
     <button id="btn-logout">Cerrar sesión</button>
   </div>
 </aside>
@@ -759,6 +762,7 @@ button.danger:hover { background: #dc2626; transform: translateY(-1px); }
 </div>
 <div class="toast" id="toast"></div>
 
+<script src="navigation.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
@@ -856,7 +860,7 @@ function spoolColor(name) {
   return `hsl(${Math.abs(h) % 360}, 55%, 45%)`;
 }
 
-let cur = 'calc';
+let cur = pageFromURL();
 let D = {};
 
 function initData(raw) {
@@ -990,6 +994,7 @@ async function enterApp() {
   wrap.style.display = 'flex';
   $('#user-email').textContent = currentUser?.email || '';
   await loadCloudData();
+  cur=pageFromURL();
   render();
 }
 
@@ -1049,6 +1054,8 @@ $('#auth-btn').onclick = async () => {
   updateAuthUI();
 };
 
+$('#btn-refresh').onclick = () => navigatePage(cur,{refresh:true});
+
 $('#btn-logout').onclick = async () => {
   try {await flushSave();} catch(e) {toast('No se guardaron los cambios. Reintentá antes de cerrar sesión.');return;}
   await sb.auth.signOut();
@@ -1057,7 +1064,7 @@ $('#btn-logout').onclick = async () => {
 };
 
 // Check existing session on load
-(async () => {
+window.addEventListener('DOMContentLoaded', async () => {
   updateAuthUI();
   const { data: { session } } = await sb.auth.getSession();
   if (session?.user) {
@@ -1066,18 +1073,22 @@ $('#btn-logout').onclick = async () => {
   } else {
     showAuth();
   }
-})();
+}, {once:true});
 
 function nav() {
   $('#nav').innerHTML = TABS.map(t =>
-    `<button class="${t === cur ? 'on' : ''}" data-t="${t}">
+    `<a class="${t === cur ? 'on' : ''}" data-t="${t}" href="#/${PAGE_ROUTES[t]}" ${t===cur?'aria-current="page"':''}>
       <span class="ico">${ICONS[t] || '•'}</span>${NAMES[t] || M[t]?.t || t}
-    </button>`
+    </a>`
   ).join('');
-  $$('nav button').forEach(b => b.onclick = () => { cur = b.dataset.t; render(); });
+  document.querySelectorAll('#nav a').forEach(a=>a.onclick=e=>{
+    if(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)return;
+    e.preventDefault();navigatePage(a.dataset.t);
+  });
 }
 
 function render() {
+  updatePageURL();
   nav();
   const main = $('#m');
   main.style.animation = 'none';
@@ -1146,11 +1157,11 @@ async function persistProductChange(rows, before, next, userId, state) {
 }
 
 async function productChange({ row, file, removePhoto = false, newProduct, changes, deleteProduct = false }) {
-  if (productBusy || commerceBusy || !cloudLoaded) return;
+  if (productBusy || commerceBusy || navigationBusy || !cloudLoaded) return;
   const userId = currentUser?.id, state = D, rows = get('products');
   if (!userId) return;
   productBusy = true;
-  document.querySelectorAll('nav button, #btn-logout').forEach(el => el.disabled = true);
+  document.querySelectorAll('nav a, #btn-refresh, #btn-logout').forEach(el => el.disabled = true);
   const root = $('#products-ui');
   root?.querySelectorAll('button,input').forEach(el => el.disabled = true);
   const status = root?.querySelector('[role="status"]');
@@ -1188,7 +1199,7 @@ async function productChange({ row, file, removePhoto = false, newProduct, chang
     if (status?.isConnected) status.textContent = error.message || 'No se pudo guardar. Reintentá.';
   } finally {
     productBusy = false;
-    document.querySelectorAll('nav button, #btn-logout').forEach(el => el.disabled = false);
+    document.querySelectorAll('nav a, #btn-refresh, #btn-logout').forEach(el => el.disabled = false);
     if (currentUser?.id === userId && D === state)
       $('#products-ui')?.querySelectorAll('button,input').forEach(el => el.disabled = false);
   }
@@ -2213,10 +2224,10 @@ function recordItems(record) {
   return [{productId:record.productId || null,name:record.name || record.desc || 'Producto sin nombre',...detail,priceUnknown:knownNumber(record.unitPrice)===null && knownNumber(record.total)===null,unitCost:knownNumber(record.cost)===null ? null : Number(record.cost)/detail.qty,subtotal:knownNumber(record.total) ?? 0,photoPath:record.photoPath || null}];
 }
 async function commerceChange(change, message, refresh) {
-  if(commerceBusy || productBusy || !currentUser || !cloudLoaded) return;
+  if(commerceBusy || productBusy || navigationBusy || !currentUser || !cloudLoaded) return;
   commerceBusy=true;
   const userId=currentUser.id,state=D;
-  const controls=[...document.querySelectorAll('#m button,#m input,#m select,#m textarea,nav button,#btn-logout')];
+  const controls=[...document.querySelectorAll('#m button,#m input,#m select,#m textarea,nav a,#btn-refresh,#btn-logout')];
   const disabledBefore=new Map(controls.map(el=>[el,el.disabled]));
   controls.forEach(el=>el.disabled=true);
   try {
