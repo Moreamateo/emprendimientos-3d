@@ -1,0 +1,14 @@
+#orders-ui .order-counts{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0}
+.order-badge{display:inline-block;border:1px solid var(--ac);border-radius:16px;padding:5px 10px;font-size:12px;color:var(--ac)}
+.order-badge strong{margin-left:6px}.state-4,.state-5{color:#70ddb0;border-color:#70ddb0}.state-6{color:#ef9999;border-color:#ef9999}.state-2,.state-3{color:#f6ce82;border-color:#f6ce82}
+#orders-ui .product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr));gap:18px}
+#orders-ui .product-card{min-width:0;border:1px solid var(--bd);border-radius:var(--radius);background:var(--card)}#orders-ui .product-body{padding:18px;overflow-wrap:anywhere}
+#orders-ui dl>div{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 0}#orders-ui dt{color:var(--mu)}#orders-ui dd{font-weight:650}
+.order-item{display:flex;gap:12px;align-items:center;margin:14px 0}.order-item>div:last-child{min-width:0}
+#orders-ui .product-photo{width:76px;height:76px;flex:0 0 76px;display:flex;align-items:center;justify-content:center;background:var(--card2);overflow:hidden;border-radius:8px;font-size:11px}
+#orders-ui .product-photo img{width:100%;height:100%;object-fit:contain}
+.order-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.order-actions button{width:auto}
+.order-edit-item{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--bd)}
+#orders-ui fieldset{border:1px solid var(--bd);border-radius:10px;margin:16px 0;padding:12px;min-width:0}#orders-ui textarea{width:100%;box-sizing:border-box;background:var(--card2);color:inherit;border:1px solid var(--bd);border-radius:8px;padding:12px;font:inherit}
+.order-notes{white-space:pre-wrap}#orders-ui details{margin:16px 0}#orders-ui summary{cursor:pointer}#order-editor:empty{display:none}
+@media(max-width:600px){.order-edit-item{grid-template-columns:1fr 1fr}.order-edit-item>strong{grid-column:1/-1}.order-actions button{flex:1 1 auto}.order-item{align-items:flex-start}}

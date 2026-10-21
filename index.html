@@ -723,6 +723,7 @@ button.danger:hover { background: #dc2626; transform: translateY(-1px); }
 #products-ui button:disabled, #products-ui input:disabled { opacity:.55; cursor:wait; }
 
 </style>
+<link rel="stylesheet" href="orders.css">
 </head>
 <body>
 <div id="auth-screen">
@@ -792,9 +793,9 @@ const M = {
   }
 };
 
-const TABS = ['calc','fixed','quotes','products','stock','sales','stats'];
-const NAMES = { calc:'Calculadora', fixed:'Gastos fijos', stock:'Stock', stats:'Estadísticas' };
-const ICONS = { calc:'🧮', fixed:'⚙️', quotes:'📋', products:'📦', stock:'🧵', sales:'💰', stats:'📊' };
+const TABS = ['calc','fixed','quotes','products','orders','stock','sales','stats'];
+const NAMES = { orders:'Pedidos', calc:'Calculadora', fixed:'Gastos fijos', stock:'Stock', stats:'Estadísticas' };
+const ICONS = { orders:'🛠️', calc:'🧮', fixed:'⚙️', quotes:'📋', products:'📦', stock:'🧵', sales:'💰', stats:'📊' };
 
 const PR = `Bambu Lab A1 mini|180×180×180|Cama móvil|300|80|80
 Bambu Lab A1|256×256×256|Cama móvil|300|100|100
@@ -872,6 +873,7 @@ function initData(raw) {
   if (!D.quotes) D.quotes = [];
   if (!D.products) D.products = [];
   if (!D.sales) D.sales = [];
+  if (!D.orders) D.orders = [];
 }
 
 // Solo en memoria + nube. NADA en el dispositivo.
@@ -1088,6 +1090,7 @@ function render() {
   else if (cur === 'quotes') quotes();
   else if (cur === 'products') products();
   else if (cur === 'sales') sales();
+  else if (cur === 'orders') orders();
   else crud(cur);
 }
 
@@ -2214,7 +2217,8 @@ async function commerceChange(change, message, refresh) {
   if(commerceBusy || productBusy || !currentUser || !cloudLoaded) return;
   commerceBusy=true;
   const userId=currentUser.id,state=D;
-  const controls=[...document.querySelectorAll('#m button,#m input,#m select,nav button,#btn-logout')];
+  const controls=[...document.querySelectorAll('#m button,#m input,#m select,#m textarea,nav button,#btn-logout')];
+  const disabledBefore=new Map(controls.map(el=>[el,el.disabled]));
   controls.forEach(el=>el.disabled=true);
   try {
     await flushSave();
@@ -2222,11 +2226,11 @@ async function commerceChange(change, message, refresh) {
     const {data:record,error}=await sb.from('user_data').select('id,data,updated_at').eq('user_id',userId).maybeSingle();
     if(error)throw error;
     if(!record)throw Error('No se encontraron los datos de tu cuenta. Recargá y reintentá.');
-    for(const key of ['products','quotes','sales']) if(JSON.stringify(record.data[key] || [])!==JSON.stringify(D[key] || [])) throw Error('Los datos cambiaron en otra sesión. Recargá antes de reintentar.');
+    for(const key of ['products','quotes','sales','orders']) if(JSON.stringify(record.data[key] || [])!==JSON.stringify(D[key] || [])) throw Error('Los datos cambiaron en otra sesión. Recargá antes de reintentar.');
     const next=structuredClone(record.data);
-    for(const key of ['products','quotes','sales']) next[key] ||= [];
+    for(const key of ['products','quotes','sales','orders']) next[key] ||= [];
     change(next);
-    for(const record of [...next.quotes,...next.sales]) for(const item of record.items || []) {
+    for(const record of [...next.quotes,...next.sales,...next.orders]) for(const item of record.items || []) {
       if(item.snapshot && Number.isInteger(item.productIndex)) {
         const product=next.products[item.productIndex];
         if(product && !item.productId){product.id ||= crypto.randomUUID();item.productId=product.id;}
@@ -2240,7 +2244,7 @@ async function commerceChange(change, message, refresh) {
     if(result.data?.length!==1)throw Error('No se confirmó el guardado. Recargá y reintentá.');
     if(D===state && currentUser?.id===userId){initData(next);refresh();toast(message);}
   }catch(e){toast(e.message || 'No se pudo guardar. Reintentá.');}
-  finally{commerceBusy=false;controls.forEach(el=>el.disabled=false);}
+  finally{commerceBusy=false;controls.forEach(el=>el.disabled=disabledBefore.get(el));}
 }
 function sales() {
   const rows=get('sales'), products=get('products');
@@ -2282,5 +2286,6 @@ function sales() {
 
 function safeLogo(value){return typeof value==='string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value) ? value : ''; }
 </script>
+<script src="orders.js"></script>
 </body>
 </html>
