@@ -2260,7 +2260,8 @@ function sales() {
   <label>Precio unitario (AR$)<input name="price" type="number" min="0" step="0.01" required></label>
   <label>Costo unitario (AR$), si se conoce<input name="cost" type="number" min="0" step="0.01" placeholder="Sin registrar"></label></div>
   <p id="sale-total" aria-live="polite"></p><button class="p" style="margin-top:14px">Guardar venta</button></form>
-  <div class="product-grid">${rows.map(r=>{
+  <div id="sale-editor"></div>
+  <div class="product-grid">${rows.map((r,saleIndex)=>{
     const items=recordItems(r),cost=knownNumber(r.cost),total=knownNumber(r.total);
     return `<article class="product-card"><div class="product-body"><h3>${esc(r.name || r.desc || 'Venta')}</h3><p>${esc(r.client || 'Cliente sin registrar')} · ${esc(r.date || 'Fecha sin registrar')}</p>
     ${items.map(item=>{
@@ -2268,7 +2269,7 @@ function sales() {
       const index=photos.push({name:item.name,photoPath:item.photoPath || (!item.snapshot ? reference?.photoPath : null)})-1;
       return `<div class="product-photo" data-photo="${index}"><small>Sin foto disponible</small></div><h3>${esc(item.name)}</h3><p>Cantidad: ${item.qty} · Precio unitario: ${item.priceUnknown ? 'Sin registrar' : money2(item.unitPrice)}</p><p>Subtotal: ${item.priceUnknown ? 'Sin registrar' : money2(item.subtotal)}</p><p>Costo unitario: ${item.unitCost===null ? 'Sin registrar' : money2(item.unitCost)}</p><p>Ganancia del ítem: ${item.unitCost===null || item.priceUnknown ? 'Sin datos suficientes' : money2(roundMoney(item.subtotal-item.unitCost*item.qty))}</p>`;
     }).join('')}
-    <dl><div><dt>Total vendido</dt><dd>${total===null?'Sin registrar':money2(total)}</dd></div><div><dt>Costo total</dt><dd>${cost===null?'Sin registrar':money2(cost)}</dd></div><div class="product-gain"><dt>Ganancia</dt><dd>${cost===null || total===null?'Pendiente de costo':money2(roundMoney(total-cost))}</dd></div></dl></div></article>`;
+    <dl><div><dt>Total vendido</dt><dd>${total===null?'Sin registrar':money2(total)}</dd></div><div><dt>Costo total</dt><dd>${cost===null?'Sin registrar':money2(cost)}</dd></div><div class="product-gain"><dt>Ganancia</dt><dd>${cost===null || total===null?'Pendiente de costo':money2(roundMoney(total-cost))}</dd></div></dl><button class="s2" data-edit-sale="${saleIndex}">Editar venta</button></div></article>`;
   }).join('') || '<p>Todavía no hay ventas.</p>'}</div></section>`;
   const form=$('#sale-form'),f=form.elements;
   const total=()=>{$('#sale-total').textContent='Total: '+money2(roundMoney(Number(f.qty.value)*Number(f.price.value)));};
@@ -2281,11 +2282,13 @@ function sales() {
     const sale={id:crypto.randomUUID(),date:f.date.value,client:f.client.value.trim(),name:item.name,items:[item],qty:item.qty,total:item.subtotal,cost:item.unitCost===null?null:roundMoney(item.unitCost*item.qty)};
     await commerceChange(next=>next.sales.push(sale),'Venta guardada',sales);
   };
+  document.querySelectorAll('#sales-ui [data-edit-sale]').forEach(b=>b.onclick=()=>editSale(Number(b.dataset.editSale)));
   loadProductPhotos($('#sales-ui'),photos,currentUser?.id);
 }
 
 function safeLogo(value){return typeof value==='string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value) ? value : ''; }
 </script>
 <script src="orders.js"></script>
+<script src="sales-edit.js"></script>
 </body>
 </html>

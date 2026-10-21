@@ -21,4 +21,10 @@ Las fotos usan las referencias de Storage y URLs firmadas existentes; no se copi
 - SDK real de Supabase con transporte simulado: cuerpo PATCH, URL corta, filtros de usuario y timestamp, denegación RLS y preservación de otros datos.
 - Diseño móvil de 390 px y escritorio. No se realizaron escrituras de prueba en una cuenta real.
 
-Publicar juntos `index.html`, `orders.js` y `orders.css`.
+Publicar juntos `index.html`, `orders.js`, `orders.css` y `sales-edit.js`.
+
+## Corregir ventas
+
+En **Ventas → Editar venta**, corregí cliente, fecha, detalle, productos, cantidades, precios y costos. Podés agregar productos del catálogo o ítems manuales y quitar ítems equivocados. **Guardar cambios de venta** actualiza el registro existente y recalcula total, costo y ganancia; no crea otra venta. Si desconocés un costo, dejalo vacío.
+
+La edición conserva fotos, campos históricos y vínculos con pedidos y presupuestos. Estos últimos mantienen sus datos originales. Los cambios se reflejan en las estadísticas de ventas. Si falla el guardado, el formulario conserva las correcciones para reintentar; ante un conflicto con otra sesión, recargá.

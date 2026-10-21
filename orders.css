@@ -11,4 +11,5 @@
 .order-edit-item{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--bd)}
 #orders-ui fieldset{border:1px solid var(--bd);border-radius:10px;margin:16px 0;padding:12px;min-width:0}#orders-ui textarea{width:100%;box-sizing:border-box;background:var(--card2);color:inherit;border:1px solid var(--bd);border-radius:8px;padding:12px;font:inherit}
 .order-notes{white-space:pre-wrap}#orders-ui details{margin:16px 0}#orders-ui summary{cursor:pointer}#order-editor:empty{display:none}
+.sale-edit-item{border:1px solid var(--bd);border-radius:10px;padding:14px;margin:16px 0;min-width:0}#sale-edit-total{margin-top:16px}#sale-editor:empty{display:none}
 @media(max-width:600px){.order-edit-item{grid-template-columns:1fr 1fr}.order-edit-item>strong{grid-column:1/-1}.order-actions button{flex:1 1 auto}.order-item{align-items:flex-start}}
