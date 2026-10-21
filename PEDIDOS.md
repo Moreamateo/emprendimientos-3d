@@ -21,10 +21,22 @@ Las fotos usan las referencias de Storage y URLs firmadas existentes; no se copi
 - SDK real de Supabase con transporte simulado: cuerpo PATCH, URL corta, filtros de usuario y timestamp, denegación RLS y preservación de otros datos.
 - Diseño móvil de 390 px y escritorio. No se realizaron escrituras de prueba en una cuenta real.
 
-Publicar juntos `index.html`, `orders.js`, `orders.css` y `sales-edit.js`.
+Publicar juntos `index.html`, `orders.js`, `orders.css`, `sales-edit.js` y `commerce-maintenance.js`.
 
 ## Corregir ventas
 
 En **Ventas → Editar venta**, corregí cliente, fecha, detalle, productos, cantidades, precios y costos. Podés agregar productos del catálogo o ítems manuales y quitar ítems equivocados. **Guardar cambios de venta** actualiza el registro existente y recalcula total, costo y ganancia; no crea otra venta. Si desconocés un costo, dejalo vacío.
 
 La edición conserva fotos, campos históricos y vínculos con pedidos y presupuestos. Estos últimos mantienen sus datos originales. Los cambios se reflejan en las estadísticas de ventas. Si falla el guardado, el formulario conserva las correcciones para reintentar; ante un conflicto con otra sesión, recargá.
+
+## Presupuestos vendidos y eliminación
+
+Al abrir **Ventas**, se importan los presupuestos con estado **Vendido** que todavía no tienen venta. Se conserva cliente, fecha, productos, cantidades e importe. Los pendientes no se importan.
+
+Las ventas de versiones antiguas se vinculan por detalle, fecha, cantidad e importe cuando existe una sola coincidencia; se completa el cliente faltante sin crear otra venta ni modificar su costo histórico. Si hay varias coincidencias, aparece un selector para elegir la venta correcta. Los datos de una venta ya vinculada no se sobrescriben al volver a abrir Ventas.
+
+**Eliminar venta** pide confirmación y actualiza el balance. El presupuesto vinculado vuelve a **Pendiente** y el pedido se conserva con su estado e importes, sin el vínculo a la venta eliminada. La venta no se reimporta automáticamente; podés registrarla otra vez explícitamente desde el presupuesto o pedido si corresponde.
+
+## Kilos de stock
+
+En **Stock → Modificar kilos**, ingresá los kilos restantes de ese material (por ejemplo, `0,750` para 750 g) y, si hace falta, su capacidad total. Se admite cero para un material agotado. El restante no puede superar la capacidad. El guardado conserva los demás datos del material y admite registros antiguos en kg y actuales en gramos, incluyendo Otros materiales.
