@@ -702,24 +702,24 @@ button.danger:hover { background: #dc2626; transform: translateY(-1px); }
 @media(max-width:480px) { .calc-ui .card { padding:18px 14px; } .calc-ui .g { grid-template-columns:1fr; } }
 
 /* Scoped product catalog */
-#products-ui .product-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr)); gap:18px; }
-#products-ui .product-card { min-width:0; overflow:hidden; border:1px solid var(--bd); border-radius:var(--radius); background:var(--card); }
-#products-ui .product-photo { aspect-ratio:4/3; background:radial-gradient(ellipse at top,var(--ac-dim),var(--card2)); display:flex; align-items:center; justify-content:center; flex-direction:column; color:var(--mu); overflow:hidden; }
-#products-ui .product-photo span { font-size:60px; color:var(--ac); }
-#products-ui .product-photo img { width:100%; height:100%; object-fit:contain; }
-#products-ui .product-body { padding:18px; }
+:is(#products-ui,#sales-ui) .product-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr)); gap:18px; }
+:is(#products-ui,#sales-ui) .product-card { min-width:0; overflow:hidden; border:1px solid var(--bd); border-radius:var(--radius); background:var(--card); }
+:is(#products-ui,#sales-ui) .product-photo { aspect-ratio:4/3; background:radial-gradient(ellipse at top,var(--ac-dim),var(--card2)); display:flex; align-items:center; justify-content:center; flex-direction:column; color:var(--mu); overflow:hidden; }
+:is(#products-ui,#sales-ui) .product-photo span { font-size:60px; color:var(--ac); }
+:is(#products-ui,#sales-ui) .product-photo img { width:100%; height:100%; object-fit:contain; }
+:is(#products-ui,#sales-ui) .product-body { padding:18px; }
 #products-ui h3 { font-size:17px; margin-bottom:16px; overflow-wrap:anywhere; }
 #products-ui dl > div { display:flex; justify-content:space-between; gap:12px; margin-bottom:8px; flex-wrap:wrap; }
 #products-ui dt { color:var(--mu); }
 #products-ui dd { margin:0; font-weight:650; overflow-wrap:anywhere; }
-#products-ui .product-gain { border-top:1px solid var(--bd); padding-top:12px; margin-top:12px; color:var(--ok); font-size:18px; }
-#products-ui .product-gain dt { color:inherit; }
-#products-ui .negative { color:#fca5a5; }
-#products-ui .product-margin { color:var(--mu); font-size:12px; margin-bottom:16px; }
-#products-ui .product-upload { color:var(--tx); }
+:is(#products-ui,#sales-ui) .product-gain { border-top:1px solid var(--bd); padding-top:12px; margin-top:12px; color:var(--ok); font-size:18px; }
+:is(#products-ui,#sales-ui) .product-gain dt { color:inherit; }
+:is(#products-ui,#sales-ui) .negative { color:#fca5a5; }
+:is(#products-ui,#sales-ui) .product-margin { color:var(--mu); font-size:12px; margin-bottom:16px; }
+:is(#products-ui,#sales-ui) .product-upload { color:var(--tx); }
 #products-ui input[type=file] { font-size:12px; max-width:100%; }
-#products-ui .product-delete { font-size:12px; margin-top:12px; }
-#products-ui .product-status { color:var(--mu); margin-bottom:16px; overflow-wrap:anywhere; }
+:is(#products-ui,#sales-ui) .product-delete { font-size:12px; margin-top:12px; }
+:is(#products-ui,#sales-ui) .product-status { color:var(--mu); margin-bottom:16px; overflow-wrap:anywhere; }
 #products-ui button:disabled, #products-ui input:disabled { opacity:.55; cursor:wait; }
 
 </style>
@@ -879,31 +879,25 @@ initData({});
 
 const get = k => D[k] || (D[k] = []);
 
-let saveTimer = null;
-const save = () => {
-  if (!currentUser) return; // sin sesión no se guarda nada
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    try {
-      const { data: existing, error: readError } = await sb.from('user_data')
-        .select('id').eq('user_id', currentUser.id).maybeSingle();
-      if (readError) throw readError; // Un error de lectura no significa que falte la fila.
-      if (existing?.id) {
-        const { error } = await sb.from('user_data')
-          .update({ data: D, updated_at: new Date().toISOString() })
-          .eq('user_id', currentUser.id);
-        if (error) throw error;
-      } else {
-        const { error } = await sb.from('user_data')
-          .insert({ user_id: currentUser.id, data: D, updated_at: new Date().toISOString() });
-        if (error) throw error;
-      }
-    } catch (e) {
-      console.warn('Cloud save failed:', e.message);
-      toast('No se pudo guardar en la nube. Revisá tu conexión y reintentá.');
-    }
-  }, 600);
-};
+let saveTimer = null, saveQueue = Promise.resolve(), saveError = null, cloudLoaded = false;
+function queueSave() {
+  clearTimeout(saveTimer);saveTimer=null;
+  if(!currentUser || !cloudLoaded)return saveQueue;
+  const userId=currentUser.id,state=D,payload=structuredClone(D);
+  saveQueue=saveQueue.catch(()=>{}).then(async()=>{
+    if(currentUser?.id!==userId || D!==state)return;
+    const {data:existing,error:readError}=await sb.from('user_data').select('id').eq('user_id',userId).maybeSingle();
+    if(readError)throw readError;
+    if(!existing)throw Error('No se encontró la cuenta. Recargá antes de guardar.');
+    const {data,error}=await sb.from('user_data').update({data:payload,updated_at:new Date().toISOString()}).eq('user_id',userId).eq('id',existing.id).select('id');
+    if(error)throw error;
+    if(data?.length!==1)throw Error('No se confirmó el guardado.');
+    saveError=null;
+  }).catch(e=>{saveError=e;toast('No se pudo guardar en la nube. Reintentá antes de salir.');});
+  return saveQueue;
+}
+const save = () => {if(!currentUser || !cloudLoaded)return;clearTimeout(saveTimer);saveTimer=setTimeout(queueSave,600);};
+async function flushSave(){if(saveTimer)queueSave();await saveQueue;if(saveError)throw saveError;}
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const money = n => 'AR$ ' + Math.round(n).toLocaleString('es-AR');
@@ -944,6 +938,7 @@ function updateAuthUI() {
 
 async function loadCloudData() {
   if (!currentUser) return;
+  cloudLoaded=false; saveError=null; clearTimeout(saveTimer);saveTimer=null;
   // Siempre resetear antes de cargar (evita mezclar cuentas)
   initData({});
 
@@ -962,6 +957,7 @@ async function loadCloudData() {
     if (data && data.data) {
       // Datos de ESTA cuenta en la nube
       initData(data.data);
+      cloudLoaded=true;
       
       toast('Datos de tu cuenta cargados');
     } else {
@@ -973,7 +969,8 @@ async function loadCloudData() {
         data: D,
         updated_at: new Date().toISOString()
       });
-      if (insErr) console.warn('Insert error:', insErr.message);
+      if (insErr) throw insErr;
+      cloudLoaded=true;
       toast('Cuenta nueva — todo vacío');
     }
   } catch (e) {
@@ -998,6 +995,7 @@ function showAuth() {
   $('#auth-screen').classList.remove('hidden');
   $('#app-wrap').classList.add('hidden');
   $('#app-wrap').style.display = 'none';
+  clearTimeout(saveTimer);saveTimer=null;cloudLoaded=false;
   // Limpiar datos en memoria al cerrar sesión
   initData({});
   currentUser = null;
@@ -1050,6 +1048,7 @@ $('#auth-btn').onclick = async () => {
 };
 
 $('#btn-logout').onclick = async () => {
+  try {await flushSave();} catch(e) {toast('No se guardaron los cambios. Reintentá antes de cerrar sesión.');return;}
   await sb.auth.signOut();
   showAuth();
   toast('Sesión cerrada');
@@ -1088,6 +1087,7 @@ function render() {
   else if (cur === 'stock') stock();
   else if (cur === 'quotes') quotes();
   else if (cur === 'products') products();
+  else if (cur === 'sales') sales();
   else crud(cur);
 }
 
@@ -1123,7 +1123,7 @@ async function compressProductPhoto(file) {
 // Compare-and-swap uses a short timestamp, never the JSON document in the URL.
 // No schema changes, no IDs assigned to existing records, no bulk replacement of products.
 async function persistProductChange(rows, before, next, userId, state) {
-  if (saveTimer) await new Promise(resolve => setTimeout(resolve, 800));
+  await flushSave();
   if (currentUser?.id !== userId || D !== state) throw new Error('La sesión cambió. Volvé a abrir Productos.');
   const { data: record, error } = await sb.from('user_data').select('id,data,updated_at').eq('user_id', userId).maybeSingle();
   if (error) throw error;
@@ -1142,8 +1142,8 @@ async function persistProductChange(rows, before, next, userId, state) {
   if (currentUser?.id === userId && D === state) rows.splice(0, rows.length, ...next);
 }
 
-async function productChange({ row, file, removePhoto = false, newProduct, deleteProduct = false }) {
-  if (productBusy) return;
+async function productChange({ row, file, removePhoto = false, newProduct, changes, deleteProduct = false }) {
+  if (productBusy || commerceBusy || !cloudLoaded) return;
   const userId = currentUser?.id, state = D, rows = get('products');
   if (!userId) return;
   productBusy = true;
@@ -1165,12 +1165,12 @@ async function productChange({ row, file, removePhoto = false, newProduct, delet
       if (error) { uploaded = null; throw new Error('No se pudo subir la foto. Verificá tu conexión y que el bucket privado product-photos tenga permisos para tu cuenta.'); }
     }
     const next = rows.slice();
-    if (newProduct) next.push({ ...newProduct, ...(uploaded ? { photoPath: uploaded } : {}) });
+    if (newProduct) next.push({ ...newProduct, id: crypto.randomUUID(), ...(uploaded ? { photoPath: uploaded } : {}) });
     else if (deleteProduct) next.splice(index, 1);
     else {
-      next[index] = { ...row };
+      next[index] = { ...row, ...changes, id: row.id || crypto.randomUUID() };
       if (removePhoto) delete next[index].photoPath;
-      else next[index].photoPath = uploaded;
+      else if (uploaded) next[index].photoPath = uploaded;
     }
     await persistProductChange(rows, before, next, userId, state);
     // Keep previous objects: deleting them here could break another session's references.
@@ -1234,7 +1234,7 @@ function products() {
           <p class="product-margin">Margen sobre venta: ${margin}</p>
           <label class="product-upload">${p.photoPath ? 'Cambiar foto' : 'Agregar foto'}<input type="file" data-upload="${i}" accept="image/jpeg,image/png,image/webp" aria-label="Foto de ${esc(p.name)}"></label>
           ${p.photoPath ? `<button class="s2" data-remove-photo="${i}">Quitar foto</button>` : ''}
-          <button type="button" class="x product-delete" data-delete-product="${i}">Eliminar producto</button>
+          <button type="button" class="s2" data-edit-product="${i}">Editar nombre y valores</button><button type="button" class="s2" data-copy-product="${i}">Duplicar producto</button>
         </div></article>`;
     }).join('') || '<div class="card"><p>Todavía no hay productos. Agregá tu primera pieza acá o guardala desde la calculadora.</p></div>'}</div>
   </section>`;
@@ -1251,9 +1251,25 @@ function products() {
     if (file) productChange({ row: rows[Number(input.dataset.upload)], file });
   });
   root.querySelectorAll('[data-remove-photo]').forEach(b => b.onclick = () => productChange({ row: rows[Number(b.dataset.removePhoto)], removePhoto: true }));
-  root.querySelectorAll('[data-delete-product]').forEach(b => b.onclick = () => {
-    const row = rows[Number(b.dataset.deleteProduct)];
-    if (confirm('¿Eliminar el producto "' + row.name + '"? Esta acción no se puede deshacer.')) productChange({ row, deleteProduct: true });
+  root.querySelectorAll('[data-copy-product]').forEach(b => b.onclick = () => {
+    const row = rows[Number(b.dataset.copyProduct)];
+    productChange({newProduct: {...row, name: row.name + ' (copia)'}});
+  });
+  root.querySelectorAll('[data-edit-product]').forEach(b => b.onclick = () => {
+    const row = rows[Number(b.dataset.editProduct)], form = $('#product-form');
+    form.querySelector('.title').textContent = 'Editar producto';
+    form.elements.namedItem('name').value = row.name || '';
+    form.elements.cost.value = row.cost ?? '';
+    form.elements.price.value = row.price ?? '';
+    form.querySelector('button').textContent = 'Guardar cambios';
+    const cancel = document.createElement('button'); cancel.type='button'; cancel.className='s2'; cancel.textContent='Cancelar edición'; cancel.onclick=products;
+    form.querySelector('[data-cancel]')?.remove();cancel.dataset.cancel='';form.append(cancel);
+    form.onsubmit=e=>{e.preventDefault(); const f=form.elements;
+      const changes={name:f.namedItem('name').value.trim(),cost:Number(f.cost.value),price:Number(f.price.value)};
+      if (!form.reportValidity() || !changes.name || !Number.isFinite(changes.cost) || !Number.isFinite(changes.price)) return;
+      productChange({row, changes, file:f.photo.files[0]});
+    };
+    form.scrollIntoView({behavior:'smooth',block:'start'});
   });
   if (productBusy) root.querySelectorAll('button,input').forEach(el => el.disabled = true);
   loadProductPhotos(root, rows, currentUser?.id);
@@ -1459,13 +1475,14 @@ function calc() {
   };
 
   $('#sq').onclick = () => {
-    const { price, qty = 1 } = window.__lastCalc || { price: 0 };
+    const { price, cost, qty = 1 } = window.__lastCalc || { price: 0 };
     get('quotes').push({
       date: new Date().toISOString().slice(0, 10),
       client: $('#qc').value || 'Sin cliente',
       desc: $('#qd').value || 'Pieza',
       qty,
       unitPrice: price / qty,
+      cost: Number.isFinite(cost) ? cost : null,
       total: Math.round(price * 100) / 100,
       status: 'Pendiente'
     });
@@ -1605,7 +1622,7 @@ function quoteDetails(q) {
 
 function generateInvoice(q) {
   const C = D.cfg;
-  const { qty, unitPrice } = quoteDetails(q);
+  const invoiceItems = recordItems(q);
   const num = String(q.receiptNumber || '').trim() || String(q.num || (D.quoteCounter || 1)).padStart(4, '0');
   const fecha = q.date || new Date().toISOString().slice(0,10);
   const fechaFmt = new Date(fecha + 'T12:00:00').toLocaleDateString('es-AR', { day:'2-digit', month:'long', year:'numeric' });
@@ -1676,7 +1693,7 @@ function generateInvoice(q) {
   <div class="sheet">
     <div class="top">
       <div style="display:flex;gap:16px;align-items:center">
-        ${C.logoB64 ? `<img class="logo" src="${C.logoB64}" alt="Logo">` : ""}
+        ${C.logoB64 ? `<img class="logo" src="${esc(safeLogo(C.logoB64))}" alt="Logo">` : ""}
         <div class="brand">
           <h1>${esc(C.tallerName || 'Sin nombre')}</h1>
           <p>
@@ -1716,12 +1733,7 @@ function generateInvoice(q) {
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td>${esc(q.desc || 'Pieza impresa en 3D')}</td>
-          <td class="right">${qty}</td>
-          <td class="right">${money2(unitPrice)}</td>
-          <td class="right">${money2(q.total)}</td>
-        </tr>
+        ${invoiceItems.map(item => `<tr><td>${esc(item.name)}</td><td class="right">${item.qty}</td><td class="right">${money2(item.unitPrice)}</td><td class="right">${money2(item.subtotal)}</td></tr>`).join('')}
       </tbody>
     </table>
 
@@ -1772,6 +1784,7 @@ function quotes() {
 
   const filter = { all: rows, pending: rows.filter(r => r.status !== 'Vendido'), sold: rows.filter(r => r.status === 'Vendido') };
   let tab = 'all';
+  let draftItems = [];
 
   const renderQuotes = () => {
     const list = filter[tab] || rows;
@@ -1832,6 +1845,7 @@ function quotes() {
             <label>Fecha<input id="q_date" type="date"></label>
             <label>Número de comprobante (opcional)<input id="q_receipt" type="text" placeholder="Ej.: 0001-00001234 · vacío: automático"></label>
           </div>
+          <button type="button" class="s2" id="q_item_add">Agregar ítem al presupuesto</button><div id="q_items"></div><p id="q_grand" aria-live="polite"></p>
           <button class="p" id="q_add" style="margin-top:14px">Crear presupuesto</button>
         </div>
       </div>
@@ -1913,6 +1927,26 @@ function quotes() {
       }
     };
 
+    const readDraftItem = () => {
+      if (!updateQuoteTotal() || !$('#q_qty').reportValidity() || !$('#q_unit').reportValidity()) return null;
+      const p = products[Number($('#q_prod').value)];
+      return snapshotItem($('#q_prod').value === '' ? null : p, Number($('#q_qty').value), Number($('#q_unit').value), $('#q_desc').value.trim() || 'Pieza');
+    };
+    const renderDraft = () => {
+      $('#q_items').innerHTML = draftItems.map((item,i)=>`<div class="card"><b>${esc(item.name)}</b><div class="g"><label>Cantidad<input type="number" min="1" step="1" required data-item-qty="${i}" value="${item.qty}"></label><label>Precio unitario<input type="number" min="0" step="0.01" required data-item-price="${i}" value="${item.unitPrice}"></label></div><p data-item-subtotal="${i}">Subtotal: ${money2(item.subtotal)}</p><button type="button" class="s2" data-item-remove="${i}">Quitar ítem</button></div>`).join('');
+      const totals = () => {$('#q_grand').textContent='Total del presupuesto: '+money2(roundMoney(draftItems.reduce((a,i)=>a+i.subtotal,0)));};
+      totals();
+      $('#q_items').querySelectorAll('input').forEach(input=>input.oninput=()=>{
+        const i=Number(input.dataset.itemQty ?? input.dataset.itemPrice), item=draftItems[i];
+        if (!input.checkValidity()) return;
+        item[input.dataset.itemQty !== undefined ? 'qty' : 'unitPrice']=Number(input.value);
+        item.subtotal=roundMoney(item.qty*item.unitPrice);
+        $('[data-item-subtotal="'+i+'"]').textContent='Subtotal: '+money2(item.subtotal);totals();
+      });
+      $$('[data-item-remove]').forEach(b=>b.onclick=()=>{draftItems.splice(Number(b.dataset.itemRemove),1);renderDraft();});
+    };
+    $('#q_item_add').onclick=()=>{const item=readDraftItem();if(!item)return;draftItems.push(item);renderDraft();$('#q_prod').value='';$('#q_desc').value='';$('#q_unit').value='0';$('#q_qty').value='1';updateQuoteTotal();};
+    renderDraft();
     const listEl = $('#qList');
     if (!list.length) {
       listEl.innerHTML = '<p style="color:var(--mu);padding:20px 0;text-align:center">No hay presupuestos en esta categoría.</p>';
@@ -1930,7 +1964,7 @@ function quotes() {
                 ${r.receiptNumber || r.num ? `<span style="font-size:11px;color:var(--mu)">#${esc(r.receiptNumber || String(r.num).padStart(4,'0'))}</span>` : ''}
               </div>
               <div class="meta">${esc(r.date || '')} · ${esc(r.desc || '')}</div>
-              <div class="meta">Cantidad: ${detail.qty} · Precio por unidad: ${money2(detail.unitPrice)}</div>
+              <div class="meta">${recordItems(r).map(item => esc(item.name)+' × '+item.qty+' · '+money2(item.unitPrice)).join('<br>')}</div>
             </div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <b style="font-size:16px">Total: ${money2(r.total)}</b>
@@ -1949,27 +1983,13 @@ function quotes() {
       renderQuotes();
     });
 
-    $('#q_add').onclick = () => {
-      if (!updateQuoteTotal()) {
-        toast('Ingresá una cantidad entera mayor a cero y un precio válido (hasta 2 decimales).');
-        return;
-      }
-      const num = D.quoteCounter || 1;
-      D.quoteCounter = num + 1;
-      rows.push({
-        num,
-        receiptNumber: $('#q_receipt').value.trim(),
-        date: $('#q_date').value || new Date().toISOString().slice(0,10),
-        client: $('#q_client').value || 'Sin cliente',
-        desc: $('#q_desc').value || 'Pieza',
-        qty: Number($('#q_qty').value),
-        unitPrice: Number($('#q_unit').value),
-        total: +$('#q_total').value || 0,
-        status: 'Pendiente'
-      });
-      save();
-      toast('Presupuesto creado');
-      renderQuotes();
+    $('#q_add').onclick = async () => {
+      if ([...$('#q_items').querySelectorAll('input')].some(input=>!input.reportValidity())) return;
+      const items=draftItems.length ? structuredClone(draftItems) : [readDraftItem()].filter(Boolean);
+      if(!items.length || items.some(i=>!validItem(i))) {toast('Revisá las cantidades y precios.');return;}
+      if(draftItems.length && ($('#q_prod').value!=='' || $('#q_desc').value.trim() || Number($('#q_unit').value)!==0)) {toast('Agregá el ítem pendiente antes de guardar.');return;}
+      const q={id:crypto.randomUUID(),num:D.quoteCounter || 1, receiptNumber:$('#q_receipt').value.trim(),date:$('#q_date').value || localDate(),client:$('#q_client').value.trim(),desc:items.map(i=>i.name).join(', '),items,qty:items.reduce((a,i)=>a+i.qty,0),total:roundMoney(items.reduce((a,i)=>a+i.subtotal,0)),status:'Pendiente'};
+      await commerceChange(next=>{next.quotes.push(q);next.quoteCounter=q.num+1;},'Presupuesto guardado',quotes);
     };
 
     $$('[data-receipt]').forEach(b => b.onclick = () => {
@@ -1991,19 +2011,16 @@ function quotes() {
       generateInvoice(q);
     });
 
-    $$('[data-sell]').forEach(b => b.onclick = () => {
-      const i = +b.dataset.sell;
-      rows[i].status = 'Vendido';
-      get('sales').push({
-        date: rows[i].date,
-        name: rows[i].desc,
-        qty: quoteDetails(rows[i]).qty,
-        total: rows[i].total,
-        cost: Math.round(rows[i].total * 0.4)
-      });
-      save();
-      toast('Marcado como vendido');
-      renderQuotes();
+    $$('[data-sell]').forEach(b => b.onclick = async () => {
+      const index=Number(b.dataset.sell), q=rows[index];
+      if(q.status==='Vendido' || get('sales').some(s=>q.id && s.quoteId===q.id)) return;
+      await commerceChange(next=>{
+        const quote=next.quotes[index]; quote.id ||= crypto.randomUUID();
+        if(quote.status==='Vendido' || next.sales.some(s=>s.quoteId===quote.id)) return;
+        const items=recordItems(quote), known=items.every(i=>i.unitCost!==null);
+        next.sales.push({id:crypto.randomUUID(),quoteId:quote.id,date:localDate(),client:quote.client || '',name:quote.desc || items.map(i=>i.name).join(', '),items,qty:items.reduce((a,i)=>a+i.qty,0),total:Number(quote.total)||0,cost:known ? roundMoney(items.reduce((a,i)=>a+i.qty*i.unitCost,0)) : null});
+        quote.status='Vendido';
+      },'Venta guardada',quotes);
     });
 
     $$('#qList .x').forEach(b => b.onclick = () => {
@@ -2020,7 +2037,8 @@ function quotes() {
 function stats() {
   const s = get('sales');
   const rev = s.reduce((a, r) => a + (r.total || 0), 0);
-  const cost = s.reduce((a, r) => a + (r.cost || 0), 0);
+  const unknownCosts = s.some(r=>knownNumber(r.cost)===null);
+  const cost = s.reduce((a, r) => a + (Number(r.cost) || 0), 0);
   const profit = rev - cost;
 
   // group by month
@@ -2059,7 +2077,7 @@ function stats() {
       <div class="g">
         <div class="k" style="color:#4ade80">${money(rev)}<small>Ingresos totales</small></div>
         <div class="k" style="color:#f87171">${money(cost)}<small>Costos / Gastos</small></div>
-        <div class="k">${money(profit)}<small>Ganancia neta</small></div>
+        <div class="k">${money(profit)}<small>${unknownCosts ? 'Ganancia provisional: faltan costos' : 'Ganancia neta'}</small></div>
         <div class="k">${s.length}<small>Ventas registradas</small></div>
       </div>
     </div>
@@ -2174,6 +2192,95 @@ function fixed() {
   $$('[data-m]').forEach(b => b.onclick = () => pick(b.dataset.m));
 }
 
+// All new commerce writes confirm persistence before replacing the local state.
+let commerceBusy = false;
+const roundMoney = n => Math.round((n + Number.EPSILON) * 100) / 100;
+const localDate = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+const knownNumber = n => n !== null && n !== undefined && n !== '' && Number.isFinite(Number(n)) && Number(n)>=0 ? Number(n) : null;
+function snapshotItem(product, qty, unitPrice, name) {
+  return {productId:product?.id || null, productIndex:product ? get('products').indexOf(product) : -1, name:name || product?.name || 'Producto sin nombre',qty,unitPrice,unitCost:knownNumber(product?.cost),photoPath:product?.photoPath || null,subtotal:roundMoney(qty*unitPrice),snapshot:true};
+}
+function validItem(i) {return Number.isSafeInteger(i.qty) && i.qty>0 && Number.isFinite(i.unitPrice) && i.unitPrice>=0 && Number.isSafeInteger(Math.round(i.subtotal*100));}
+function recordItems(record) {
+  if(Array.isArray(record.items) && record.items.length) return record.items.map(i=>{
+    const qty=Number.isSafeInteger(Number(i.qty)) && Number(i.qty)>0 ? Number(i.qty) : 1;
+    const unitPrice=knownNumber(i.unitPrice) ?? 0;
+    return {...i,name:i.name || i.desc || 'Producto sin nombre',qty,unitPrice,unitCost:knownNumber(i.unitCost),subtotal:knownNumber(i.subtotal) ?? roundMoney(qty*unitPrice)};
+  });
+  const detail=quoteDetails(record);
+  return [{productId:record.productId || null,name:record.name || record.desc || 'Producto sin nombre',...detail,priceUnknown:knownNumber(record.unitPrice)===null && knownNumber(record.total)===null,unitCost:knownNumber(record.cost)===null ? null : Number(record.cost)/detail.qty,subtotal:knownNumber(record.total) ?? 0,photoPath:record.photoPath || null}];
+}
+async function commerceChange(change, message, refresh) {
+  if(commerceBusy || productBusy || !currentUser || !cloudLoaded) return;
+  commerceBusy=true;
+  const userId=currentUser.id,state=D;
+  const controls=[...document.querySelectorAll('#m button,#m input,#m select,nav button,#btn-logout')];
+  controls.forEach(el=>el.disabled=true);
+  try {
+    await flushSave();
+    if(D!==state || currentUser?.id!==userId) throw Error('La sesión cambió. Recargá la página.');
+    const {data:record,error}=await sb.from('user_data').select('id,data,updated_at').eq('user_id',userId).maybeSingle();
+    if(error)throw error;
+    if(!record)throw Error('No se encontraron los datos de tu cuenta. Recargá y reintentá.');
+    for(const key of ['products','quotes','sales']) if(JSON.stringify(record.data[key] || [])!==JSON.stringify(D[key] || [])) throw Error('Los datos cambiaron en otra sesión. Recargá antes de reintentar.');
+    const next=structuredClone(record.data);
+    for(const key of ['products','quotes','sales']) next[key] ||= [];
+    change(next);
+    for(const record of [...next.quotes,...next.sales]) for(const item of record.items || []) {
+      if(item.snapshot && Number.isInteger(item.productIndex)) {
+        const product=next.products[item.productIndex];
+        if(product && !item.productId){product.id ||= crypto.randomUUID();item.productId=product.id;}
+        delete item.productIndex;
+      }
+    }
+    let query=sb.from('user_data').update({data:next,updated_at:new Date().toISOString()}).eq('user_id',userId).eq('id',record.id);
+    query=record.updated_at==null ? query.is('updated_at',null) : query.eq('updated_at',record.updated_at);
+    const result=await query.select('id');
+    if(result.error)throw result.error;
+    if(result.data?.length!==1)throw Error('No se confirmó el guardado. Recargá y reintentá.');
+    if(D===state && currentUser?.id===userId){initData(next);refresh();toast(message);}
+  }catch(e){toast(e.message || 'No se pudo guardar. Reintentá.');}
+  finally{commerceBusy=false;controls.forEach(el=>el.disabled=false);}
+}
+function sales() {
+  const rows=get('sales'), products=get('products');
+  const clients=[...new Set([...rows,...get('quotes')].map(r=>r.client).filter(c=>typeof c==='string' && c))];
+  const photos=[];
+  $('#m').innerHTML=`<section id="sales-ui"><h2>Ventas</h2><p class="s">Historial de productos vendidos. Los importes guardados no cambian al editar el catálogo.</p>
+  <form class="card" id="sale-form"><div class="title">Nueva venta</div><div class="g">
+  <label>Producto<select name="product"><option value="">Venta manual</option>${products.map((p,i)=>`<option value="${i}">${esc(p.name)}</option>`).join('')}</select></label>
+  <label>Nombre / detalle<input name="name" required maxlength="250"></label><label>Cliente<input name="client" list="sale-clients" maxlength="250" placeholder="Consumidor final"></label>
+  <datalist id="sale-clients">${clients.map(c=>`<option value="${esc(c)}"></option>`).join('')}</datalist>
+  <label>Fecha<input name="date" type="date" required value="${localDate()}"></label>
+  <label>Cantidad<input name="qty" type="number" min="1" step="1" value="1" required></label>
+  <label>Precio unitario (AR$)<input name="price" type="number" min="0" step="0.01" required></label>
+  <label>Costo unitario (AR$), si se conoce<input name="cost" type="number" min="0" step="0.01" placeholder="Sin registrar"></label></div>
+  <p id="sale-total" aria-live="polite"></p><button class="p" style="margin-top:14px">Guardar venta</button></form>
+  <div class="product-grid">${rows.map(r=>{
+    const items=recordItems(r),cost=knownNumber(r.cost),total=knownNumber(r.total);
+    return `<article class="product-card"><div class="product-body"><h3>${esc(r.name || r.desc || 'Venta')}</h3><p>${esc(r.client || 'Cliente sin registrar')} · ${esc(r.date || 'Fecha sin registrar')}</p>
+    ${items.map(item=>{
+      const reference=products.find(p=>item.productId && p.id===item.productId) || (!item.snapshot ? products.find(p=>p.name===item.name) : null);
+      const index=photos.push({name:item.name,photoPath:item.photoPath || (!item.snapshot ? reference?.photoPath : null)})-1;
+      return `<div class="product-photo" data-photo="${index}"><small>Sin foto disponible</small></div><h3>${esc(item.name)}</h3><p>Cantidad: ${item.qty} · Precio unitario: ${item.priceUnknown ? 'Sin registrar' : money2(item.unitPrice)}</p><p>Subtotal: ${item.priceUnknown ? 'Sin registrar' : money2(item.subtotal)}</p><p>Costo unitario: ${item.unitCost===null ? 'Sin registrar' : money2(item.unitCost)}</p><p>Ganancia del ítem: ${item.unitCost===null || item.priceUnknown ? 'Sin datos suficientes' : money2(roundMoney(item.subtotal-item.unitCost*item.qty))}</p>`;
+    }).join('')}
+    <dl><div><dt>Total vendido</dt><dd>${total===null?'Sin registrar':money2(total)}</dd></div><div><dt>Costo total</dt><dd>${cost===null?'Sin registrar':money2(cost)}</dd></div><div class="product-gain"><dt>Ganancia</dt><dd>${cost===null || total===null?'Pendiente de costo':money2(roundMoney(total-cost))}</dd></div></dl></div></article>`;
+  }).join('') || '<p>Todavía no hay ventas.</p>'}</div></section>`;
+  const form=$('#sale-form'),f=form.elements;
+  const total=()=>{$('#sale-total').textContent='Total: '+money2(roundMoney(Number(f.qty.value)*Number(f.price.value)));};
+  f.qty.oninput=total;f.price.oninput=total;
+  f.product.onchange=()=>{const p=products[Number(f.product.value)];if(f.product.value!=='' && p){f.namedItem('name').value=p.name || '';f.price.value=p.price ?? '';f.cost.value=p.cost ?? '';total();}};
+  form.onsubmit=async e=>{e.preventDefault();if(!form.reportValidity())return;
+    const p=f.product.value===''?null:products[Number(f.product.value)],item=snapshotItem(p,Number(f.qty.value),Number(f.price.value),f.namedItem('name').value.trim());
+    item.unitCost=knownNumber(f.cost.value);
+    if(!item.name || !validItem(item))return;
+    const sale={id:crypto.randomUUID(),date:f.date.value,client:f.client.value.trim(),name:item.name,items:[item],qty:item.qty,total:item.subtotal,cost:item.unitCost===null?null:roundMoney(item.unitCost*item.qty)};
+    await commerceChange(next=>next.sales.push(sale),'Venta guardada',sales);
+  };
+  loadProductPhotos($('#sales-ui'),photos,currentUser?.id);
+}
+
+function safeLogo(value){return typeof value==='string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value) ? value : ''; }
 </script>
 </body>
 </html>
