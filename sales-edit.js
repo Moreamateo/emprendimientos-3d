@@ -8,7 +8,7 @@ function editSale(index) {
     <div class="g"><label>Cliente<input name="client" maxlength="250" value="${esc(original.client || '')}" placeholder="Consumidor final"></label>
     <label>Fecha<input name="date" type="date" required value="${esc(original.date || '')}"></label>
     <label>Nombre / detalle de la venta<input name="title" maxlength="500" required value="${esc(original.name || original.desc || items.map(i=>i.name).join(', '))}"></label></div>
-    <div id="sale-edit-items"></div>
+    ${financeFields('sales',original)}<div id="sale-edit-items"></div>
     <div class="g"><label>Agregar del catálogo<select id="sale-edit-product"><option value="">Ítem manual</option>${products.map((p,i)=>`<option value="${i}">${esc(p.name)}</option>`).join('')}</select></label><button type="button" class="s2" id="sale-edit-add">Agregar ítem</button></div>
     <p id="sale-edit-total" aria-live="polite"></p><div class="order-actions"><button class="p" type="submit">Guardar cambios de venta</button><button class="s2" type="button" id="sale-edit-cancel">Cancelar edición</button></div></form>`;
   const form=$('#sale-edit-form');
@@ -41,7 +41,7 @@ function editSale(index) {
     const f=form.elements,{total,cost}=totals();
     if(!f.title.value.trim() || !orderDateValid(f.date.value))return toast('Revisá el nombre y la fecha de la venta.');
     if(!items.length || items.some(i=>!i.name.trim() || !validItem({...i,subtotal:roundMoney(i.qty*i.unitPrice)}) || (i.unitCost!==null && knownNumber(i.unitCost)===null)) || !Number.isSafeInteger(Math.round(total*100)) || (cost!==null && !Number.isSafeInteger(Math.round(cost*100))))return toast('Revisá productos, cantidades, precios y costos. La venta necesita al menos un ítem.');
-    const updated={...original,client:f.client.value.trim(),date:f.date.value,name:f.title.value.trim(),items:items.map(i=>({...i,name:i.name.trim(),subtotal:roundMoney(i.qty*i.unitPrice)})),qty:items.reduce((n,i)=>n+i.qty,0),total,cost,updatedAt:new Date().toISOString()};
+    const updated={...original,settlement:f.settlement.value,client:f.client.value.trim(),date:f.date.value,name:f.title.value.trim(),items:items.map(i=>({...i,name:i.name.trim(),subtotal:roundMoney(i.qty*i.unitPrice)})),qty:items.reduce((n,i)=>n+i.qty,0),total,cost,updatedAt:new Date().toISOString()};
     await commerceChange(next=>{next.sales[index]=updated;},'Venta actualizada',sales);
   };
   draw();root.scrollIntoView({behavior:'smooth',block:'start'});form.elements.client.focus();

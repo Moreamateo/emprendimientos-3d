@@ -880,6 +880,7 @@ function initData(raw) {
   if (!D.orders) D.orders = [];
   if (!D.expenses) D.expenses = [];
   if (!D.incomes) D.incomes = [];
+  if (!D.stockMovements) D.stockMovements = [];
 }
 
 // Solo en memoria + nube. NADA en el dispositivo.
@@ -1533,7 +1534,7 @@ function stock(initialTab = 'fil') {
       <h2>Stock</h2>
       <p class="s">Controlá rollos de filamento e insumos del taller en un solo lugar.</p>
 
-      <div id="stock-editor"></div>
+      <div id="stock-editor"></div>${stockMovementHistory()}
       <div class="card">
         <div class="stock-tabs">
           <button class="${tab==='fil'?'on':''}" data-tab="fil">Filamentos ${fil.length}</button>
@@ -1556,7 +1557,7 @@ function stock(initialTab = 'fil') {
             <label>Gramos totales del rollo<input id="s_total" type="number" step="any" value="1000"></label>
             <label>Precio del rollo (ARS)<input id="s_price" type="number" step="any" value="0"></label>
           </div>
-          <button class="p" id="s_add" style="margin-top:14px">Agregar</button>
+          <label>Registro de compra<select id="s_purchase"><option value="existing">Stock existente / pago ya registrado</option><option value="bank">Nueva compra pagada por banco</option><option value="cash">Nueva compra pagada en efectivo</option></select></label><label>Fecha de compra / alta<input id="s_date" type="date" value="${localDate()}"></label><p class="s">Una nueva compra registra el pago y el stock juntos. Si el gasto ya existe, elegí stock existente para evitar duplicarlo.</p><button class="p" id="s_add" style="margin-top:14px">Agregar</button>
         </div>
       </div>
     `;
@@ -1608,6 +1609,7 @@ function stock(initialTab = 'fil') {
     document.querySelectorAll('[data-stock-edit]').forEach(b=>b.onclick=()=>editStockWeight(Number(b.dataset.stockEdit)));
     $('#s_add').onclick = async () => {
       const item = {
+        id: crypto.randomUUID(),
         name: $('#s_name').value || 'Filamento',
         type: $('#s_type').value,
         color: $('#s_color').value || 'Negro',
@@ -1617,11 +1619,21 @@ function stock(initialTab = 'fil') {
         other: tab === 'other'
       };
       if(!Number.isFinite(item.grams) || !Number.isFinite(item.total) || !Number.isFinite(item.price) || item.grams<0 || item.total<=0 || item.grams>item.total || item.price<0)return toast('Revisá peso disponible, capacidad y precio.');
-      await commerceChange(next=>next.stock.push(item),'Agregado al stock',()=>stock(tab));
+      const payment=$('#s_purchase').value,date=$('#s_date').value;
+      if(!orderDateValid(date) || (payment!=='existing' && item.price<=0))return toast('Revisá fecha y precio de compra.');
+      await commerceChange(next=>{
+        next.stock.push(item);
+        next.stockMovements.push({id:crypto.randomUUID(),stockId:item.id,date,grams:item.grams,kind:payment==='existing'?'opening':'purchase'});
+        if(payment!=='existing')next.expenses.push({id:crypto.randomUUID(),stockId:item.id,date,name:'Compra de '+item.name,description:'Compra de '+item.name,amount:roundMoney(item.price),category:tab==='fil'?'Filamento':'Insumos',financeKind:'inventory',settlement:payment});
+      },'Agregado al stock',()=>stock(tab));
     };
 
     document.querySelectorAll('#stockList .x').forEach(b => b.onclick = () => {
-      if(confirm('¿Eliminar este material del stock?'))commerceChange(next=>next.stock.splice(+b.dataset.i,1),'Material eliminado',()=>stock(tab));
+      if(confirm('¿Eliminar este material del stock? Los pagos de compra se conservan.'))commerceChange(next=>{
+        const item=next.stock[+b.dataset.i];item.id ||= crypto.randomUUID();
+        next.stockMovements.push({id:crypto.randomUUID(),stockId:item.id,date:localDate(),grams:-(item.grams ?? (item.kg || 0)*1000),kind:'remove'});
+        next.stock.splice(+b.dataset.i,1);
+      },'Material eliminado',()=>stock(tab));
     });
   };
 
@@ -2050,119 +2062,6 @@ function quotes() {
 }
 
 /* ========== STATS ========== */
-function stats() {
-  const s = get('sales');
-  const incomeRows=get('incomes');
-  const salesRevenue=roundMoney(s.reduce((a,r)=>a+(knownNumber(r.total) ?? 0),0));
-  const extraRevenue=roundMoney(incomeRows.reduce((a,r)=>a+(knownNumber(r.amount) ?? 0),0));
-  const rev = roundMoney(salesRevenue+extraRevenue);
-  const unknownCosts = s.some(r=>knownNumber(r.cost)===null);
-  const cost = s.reduce((a, r) => a + (Number(r.cost) || 0), 0);
-  const expenseRows=get('expenses');
-  const expenseTotal=roundMoney(expenseRows.reduce((n,e)=>n+expenseAmount(e),0));
-  const additionalExpenses=roundMoney(expenseRows.filter(expenseDeducts).reduce((n,e)=>n+expenseAmount(e),0));
-  const profit = roundMoney(rev - cost - additionalExpenses);
-
-  // group by month
-  const mo = {};
-  s.forEach(r => {
-    const m = (r.date || '').slice(0, 7) || 's/f';
-    if (!mo[m]) mo[m] = { ing: 0, gas: 0 };
-    mo[m].ing += knownNumber(r.total) ?? 0;
-    mo[m].gas += knownNumber(r.cost) ?? 0;
-  });
-
-  expenseRows.filter(expenseDeducts).forEach(e=>{
-    const month=(e.date || '').slice(0,7) || 's/f';
-    if(!mo[month])mo[month]={ing:0,gas:0};
-    mo[month].gas+=expenseAmount(e);
-  });
-
-  incomeRows.forEach(r=>{const m=(r.date || '').slice(0,7) || 's/f';if(!mo[m])mo[m]={ing:0,gas:0};mo[m].ing+=knownNumber(r.amount) ?? 0;});
-  // last 6 months
-  const months = [];
-  const now = new Date();
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    const label = d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
-    months.push({
-      key,
-      label,
-      ing: mo[key]?.ing || 0,
-      gas: mo[key]?.gas || 0
-    });
-  }
-
-  const maxVal = Math.max(1, ...months.flatMap(m => [m.ing, m.gas]));
-
-
-  $('#m').innerHTML = `
-    <h2>Estadísticas</h2>
-    <p class="s">Ingresos por ventas e ingresos extra menos sus costos y los gastos adicionales registrados. El stock y los pedidos pendientes no se incluyen en el resultado.</p>
-
-    <div class="card">
-      <div class="g">
-        <div class="k" style="color:#4ade80">${money2(rev)}<small>Ingresos totales</small></div>
-        <div class="k" style="color:#f87171">${money2(cost)}<small>Costos de ventas</small></div>
-        <div class="k" style="color:#f87171">${money2(additionalExpenses)}<small>Gastos adicionales</small></div>
-        <div class="k" id="stats-result">${money2(profit)}<small>${unknownCosts ? 'Resultado provisional: faltan costos' : 'Resultado registrado'}</small></div>
-        <div class="k">${s.length}<small>Ventas registradas</small></div>
-      </div>
-    </div>
-
-    <div class="card chart-card">
-      <div class="title">Últimos 6 meses</div>
-      <div class="legend">
-        <span><i class="ing"></i> Ingresos</span>
-        <span><i class="gas"></i> Costos de ventas + gastos adicionales</span>
-      </div>
-      <div class="chart-bars" id="chartBars">
-        ${months.map((m, i) => `
-          <div class="chart-col">
-            <div class="chart-bar-group">
-              <div class="chart-bar ing" style="height:0%" data-h="${(m.ing / maxVal * 100).toFixed(1)}"></div>
-              <div class="chart-bar gas" style="height:0%" data-h="${(m.gas / maxVal * 100).toFixed(1)}"></div>
-            </div>
-            <div class="chart-label">${m.label}</div>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="title">Detalle por mes</div>
-      ${months.map(m => `
-        <div class="stat-row">
-          <span>${m.label}</span>
-          <span>
-            <span class="ingreso">+ ${money2(m.ing)}</span>
-            &nbsp;&nbsp;
-            <span class="gasto">− ${money2(m.gas)}</span>
-          </span>
-        </div>
-      `).join('') || '<p style="color:var(--mu)">Sin datos todavía.</p>'}
-    </div>
-
-    <div class="card">
-      <div class="title">Desglose de movimientos</div>
-      <p>Ventas: <strong>${money2(salesRevenue)}</strong> · Ingresos extra: <strong>${money2(extraRevenue)}</strong></p>
-      <p>Total pagado registrado: <strong>${money2(expenseTotal)}</strong></p>
-      <p>Ya incluidos en costos de ventas: <strong>${money2(roundMoney(expenseTotal-additionalExpenses))}</strong> (no se descuentan nuevamente).</p>
-      <p class="s">Gastos fijos configura la calculadora; no representa pagos realizados. El resultado usa todos los registros; el gráfico muestra los últimos seis meses.</p>
-    </div>
-  `;
-
-  // Animate bars
-  requestAnimationFrame(() => {
-    setTimeout(() => {
-      $$('.chart-bar').forEach(b => {
-        b.style.height = b.dataset.h + '%';
-      });
-    }, 50);
-  });
-}
-
 /* ========== FIXED ========== */
 function fixed() {
   const C = D.cfg;
@@ -2255,9 +2154,9 @@ async function commerceChange(change, message, refresh) {
     const {data:record,error}=await sb.from('user_data').select('id,data,updated_at').eq('user_id',userId).maybeSingle();
     if(error)throw error;
     if(!record)throw Error('No se encontraron los datos de tu cuenta. Recargá y reintentá.');
-    for(const key of ['products','quotes','sales','orders','stock','expenses','incomes']) if(JSON.stringify(record.data[key] || [])!==JSON.stringify(D[key] || [])) throw Error('Los datos cambiaron en otra sesión. Recargá antes de reintentar.');
+    for(const key of ['products','quotes','sales','orders','stock','expenses','incomes','stockMovements']) if(JSON.stringify(record.data[key] || [])!==JSON.stringify(D[key] || [])) throw Error('Los datos cambiaron en otra sesión. Recargá antes de reintentar.');
     const next=structuredClone(record.data);
-    for(const key of ['products','quotes','sales','orders','stock','expenses','incomes']) next[key] ||= [];
+    for(const key of ['products','quotes','sales','orders','stock','expenses','incomes','stockMovements']) next[key] ||= [];
     change(next);
     for(const record of [...next.quotes,...next.sales,...next.orders]) for(const item of record.items || []) {
       if(item.snapshot && Number.isInteger(item.productIndex)) {
@@ -2288,7 +2187,7 @@ function sales(syncQuotes = true) {
   <label>Cantidad<input name="qty" type="number" min="1" step="1" value="1" required></label>
   <label>Precio unitario (AR$)<input name="price" type="number" min="0" step="0.01" required></label>
   <label>Costo unitario (AR$), si se conoce<input name="cost" type="number" min="0" step="0.01" placeholder="Sin registrar"></label></div>
-  <p id="sale-total" aria-live="polite"></p><button class="p" style="margin-top:14px">Guardar venta</button></form>
+  ${financeFields('sales')}<p id="sale-total" aria-live="polite"></p><button class="p" style="margin-top:14px">Guardar venta</button></form>
   <div id="quote-sync-review"></div><div id="sale-editor"></div>
   <div class="product-grid">${rows.map((r,saleIndex)=>{
     const items=recordItems(r),cost=knownNumber(r.cost),total=knownNumber(r.total);
@@ -2308,7 +2207,7 @@ function sales(syncQuotes = true) {
     const p=f.product.value===''?null:products[Number(f.product.value)],item=snapshotItem(p,Number(f.qty.value),Number(f.price.value),f.namedItem('name').value.trim());
     item.unitCost=knownNumber(f.cost.value);
     if(!item.name || !validItem(item))return;
-    const sale={id:crypto.randomUUID(),date:f.date.value,client:f.client.value.trim(),name:item.name,items:[item],qty:item.qty,total:item.subtotal,cost:item.unitCost===null?null:roundMoney(item.unitCost*item.qty)};
+    const sale={id:crypto.randomUUID(),settlement:f.settlement.value,date:f.date.value,client:f.client.value.trim(),name:item.name,items:[item],qty:item.qty,total:item.subtotal,cost:item.unitCost===null?null:roundMoney(item.unitCost*item.qty)};
     await commerceChange(next=>next.sales.push(sale),'Venta guardada',sales);
   };
   document.querySelectorAll('#sales-ui [data-edit-sale]').forEach(b=>b.onclick=()=>editSale(Number(b.dataset.editSale)));
@@ -2324,5 +2223,7 @@ function safeLogo(value){return typeof value==='string' && /^data:image\/(png|jp
 <script src="sales-edit.js"></script>
 <script src="commerce-maintenance.js"></script>
 <script src="expenses.js"></script>
+<script src="finance.js"></script>
+<script src="finance-ui.js"></script>
 </body>
 </html>

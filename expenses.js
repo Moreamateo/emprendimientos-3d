@@ -1,7 +1,7 @@
 const EXPENSE_CATEGORIES=['Filamento','Insumos','Electricidad','Mantenimiento','Herramientas','Envíos','Servicios','Otros'];
 let expenseFilters={search:'',month:'',category:''};
 const expenseAmount=e=>knownNumber(e.amount) ?? 0;
-const expenseDeducts=e=>e.includedInSaleCost!==true;
+const expenseDeducts=e=>e.financeKind==='operating' && e.includedInSaleCost!==true;
 function expenses(){
   const rows=get('expenses');
   const categories=[...new Set([...EXPENSE_CATEGORIES,...rows.map(e=>e.category || 'Otros')])];
@@ -16,7 +16,7 @@ function expenses(){
     const list=rows.map((e,index)=>({e,index})).filter(({e})=>(!expenseFilters.month || (e.date || '').startsWith(expenseFilters.month)) && (!expenseFilters.category || (e.category || 'Otros')===expenseFilters.category) && [e.description || e.name,e.payee,e.notes].join(' ').toLocaleLowerCase('es').includes(query)).sort((a,b)=>String(b.e.date || '').localeCompare(String(a.e.date || '')));
     const total=roundMoney(list.reduce((n,{e})=>n+expenseAmount(e),0)),deduct=roundMoney(list.reduce((n,{e})=>n+(expenseDeducts(e)?expenseAmount(e):0),0));
     $('#expense-summary').textContent=`${list.length} gastos · Pagado: ${money2(total)} · A descontar del resultado: ${money2(deduct)}`;
-    $('#expense-list').innerHTML=list.map(({e,index})=>`<article class="card"><h3>${esc(e.description || e.name || 'Gasto sin concepto')}</h3><p>${orderDateLabel(e.date)} · ${esc(e.category || 'Otros')}</p><p>${esc(e.payee || 'Sin proveedor')}</p><strong>${money2(expenseAmount(e))}</strong><p class="s">${expenseDeducts(e)?'Se descuenta en Estadísticas':'Ya incluido en costos de ventas: no se descuenta otra vez'}</p>${e.notes?`<p class="order-notes">${esc(e.notes)}</p>`:''}<div class="order-actions"><button class="s2" data-expense-edit="${index}">Editar gasto</button><button class="danger" data-expense-delete="${index}">Eliminar gasto</button></div></article>`).join('') || '<p class="card">No hay gastos para mostrar.</p>';
+    $('#expense-list').innerHTML=list.map(({e,index})=>`<article class="card"><h3>${esc(e.description || e.name || 'Gasto sin concepto')}</h3><p>${orderDateLabel(e.date)} · ${esc(e.category || 'Otros')}</p><p>${esc(e.payee || 'Sin proveedor')}</p><strong>${money2(expenseAmount(e))}</strong><p class="s">${expenseDeducts(e)?'Se descuenta en Estadísticas':(MaRoMaFinance.kinds.expenses[e.financeKind] || 'Sin clasificar: revisá en Estadísticas')}</p>${e.notes?`<p class="order-notes">${esc(e.notes)}</p>`:''}<div class="order-actions"><button class="s2" data-expense-edit="${index}">Editar gasto</button><button class="danger" data-expense-delete="${index}">Eliminar gasto</button></div></article>`).join('') || '<p class="card">No hay gastos para mostrar.</p>';
     document.querySelectorAll('[data-expense-edit]').forEach(b=>b.onclick=()=>expenseEditor(Number(b.dataset.expenseEdit)));
     document.querySelectorAll('[data-expense-delete]').forEach(b=>b.onclick=()=>deleteExpense(Number(b.dataset.expenseDelete)));
   };
@@ -35,7 +35,7 @@ function expenseEditor(index){
     <label>Importe (AR$)<input name="amount" required type="number" min="0.01" step="0.01" value="${original?expenseAmount(original):''}"></label>
     <label>Categoría<select name="category">${categories.map(c=>`<option ${c===(original?.category || 'Otros')?'selected':''}>${esc(c)}</option>`).join('')}</select></label>
     <label>Proveedor / destinatario (opcional)<input name="payee" maxlength="250" value="${esc(original?.payee || '')}"></label></div>
-    <label class="expense-check"><input name="included" type="checkbox" ${original?.includedInSaleCost?'checked':''}> Ya incluido en el costo de ventas (no descontar nuevamente)</label>
+    ${financeFields('expenses',original || {})}<label class="expense-check"><input name="included" type="checkbox" ${original?.includedInSaleCost?'checked':''}> Ya incluido en el costo de ventas (no descontar nuevamente)</label>
     <p class="s">Marcá esta opción si ese importe ya está contemplado en los costos de tus ventas. El pago queda registrado sin restarse dos veces. Registrar un gasto no cambia las cantidades del stock.</p>
     <label>Observaciones<textarea name="notes" rows="3" maxlength="4000">${esc(original?.notes || '')}</textarea></label>
     <div class="order-actions"><button class="p" type="submit">Guardar gasto</button><button class="s2" type="button" id="expense-cancel">Cancelar</button></div></form>`;
@@ -44,7 +44,7 @@ function expenseEditor(index){
     event.preventDefault();if(!form.reportValidity())return;
     const f=form.elements,amount=Number(f.amount.value),description=f.description.value.trim();
     if(!description || !orderDateValid(f.date.value) || !Number.isFinite(amount) || amount<=0 || !Number.isSafeInteger(Math.round(amount*100)))return toast('Revisá el concepto, la fecha y el importe del gasto.');
-    const row={...(original || {}),id:original?.id || crypto.randomUUID(),description,name:description,date:f.date.value,amount:roundMoney(amount),category:f.category.value,payee:f.payee.value.trim(),notes:f.notes.value.trim(),includedInSaleCost:f.included.checked,updatedAt:new Date().toISOString()};
+    const row={...(original || {}),id:original?.id || crypto.randomUUID(),description,name:description,date:f.date.value,amount:roundMoney(amount),category:f.category.value,payee:f.payee.value.trim(),notes:f.notes.value.trim(),includedInSaleCost:f.included.checked,financeKind:f.financeKind.value,settlement:f.settlement.value,updatedAt:new Date().toISOString()};
     await commerceChange(next=>{if(original)next.expenses[index]=row;else next.expenses.push(row);},'Gasto guardado',expenses);
   };
   form.scrollIntoView({behavior:'smooth',block:'start'});form.elements.description.focus();
@@ -64,7 +64,7 @@ $('#income-section').innerHTML=`      <form class="card" id="income-form">
         </div>
         <label style="margin-top:12px">Concepto / detalle<input name="name" required maxlength="250" placeholder="Ej: Reembolso, servicio de diseño, otro"></label>
         <label style="margin-top:12px">Notas (opcional)<input name="notes" maxlength="500" placeholder="Opcional"></label>
-        <button class="p" style="margin-top:14px" type="submit">Guardar ingreso</button>
+        ${financeFields('incomes')}<button class="p" style="margin-top:14px" type="submit">Guardar ingreso</button>
       </form><div class="card"><h3>Ingresos extra</h3><div id="income-list" class="expense-grid"></div></div>`;
   const drawIncomes = () => {
     const rows = get('incomes');
@@ -99,6 +99,7 @@ $('#income-section').innerHTML=`      <form class="card" id="income-form">
     }
     const row = {
       id: crypto.randomUUID(),
+      financeKind:f.financeKind.value,settlement:f.settlement.value,
       date,
       name,
       amount: roundMoney(amount),
@@ -122,7 +123,7 @@ function editIncome(index) {
     </div>
     <label style="margin-top:12px">Concepto / detalle<input name="name" required maxlength="250" value="${esc(original.name || '')}"></label>
     <label style="margin-top:12px">Notas (opcional)<input name="notes" maxlength="500" value="${esc(original.notes || '')}"></label>
-    <div class="order-actions" style="margin-top:14px">
+    ${financeFields('incomes',original)}<div class="order-actions" style="margin-top:14px">
       <button class="p" type="submit">Guardar cambios</button>
       <button class="s2" type="button" id="income-edit-cancel">Cancelar</button>
     </div>
@@ -141,6 +142,7 @@ function editIncome(index) {
     }
     const updated = {
       ...original,
+      financeKind:f.financeKind.value,settlement:f.settlement.value,
       date,
       name,
       amount: roundMoney(amount),

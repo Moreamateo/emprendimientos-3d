@@ -73,7 +73,9 @@ function editStockWeight(index) {
     e.preventDefault();const form=e.currentTarget;if(!form.reportValidity())return;
     const kg=Number(form.elements.kg.value),total=Number(form.elements.capacity.value);
     if(!Number.isFinite(kg)||!Number.isFinite(total)||kg<0||total<=0||kg>total||!Number.isSafeInteger(Math.round(total*1000)))return toast('Los kilos restantes deben estar entre cero y la capacidad total.');
-    await commerceChange(next=>{const row=next.stock[index];row.grams=Math.round(kg*1000);row.total=Math.round(total*1000);if('kg' in row)row.kg=row.grams/1000;},'Kilos de stock actualizados',()=>stock(item.other?'other':'fil'));
+    await commerceChange(next=>{const row=next.stock[index];row.id ||= crypto.randomUUID();
+      next.stockMovements.push({id:crypto.randomUUID(),stockId:row.id,date:localDate(),grams:Math.round(kg*1000)-(row.grams ?? (row.kg || 0)*1000),kind:'adjustment'});
+      row.grams=Math.round(kg*1000);row.total=Math.round(total*1000);if('kg' in row)row.kg=row.grams/1000;},'Kilos de stock actualizados',()=>stock(item.other?'other':'fil'));
   };
   root.scrollIntoView({behavior:'smooth',block:'start'});$('#stock-weight-form').elements.kg.focus();
 }
