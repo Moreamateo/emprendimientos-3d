@@ -12,15 +12,19 @@ function stats(){
     const d=new Date(now.getFullYear(),now.getMonth()-5+i,1),key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
     return {label:d.toLocaleDateString('es-AR',{month:'short',year:'2-digit'}),...(v.monthly[key] || {revenue:0,cost:0})};
   }),max=Math.max(1,...months.flatMap(m=>[m.revenue,m.cost]));
-  $('#m').innerHTML=`<h2>Ventas, resultado y dinero</h2>
-    <p class="s">El resultado no es efectivo disponible. Banco y deuda se calculan con los movimientos clasificados de todo el historial.</p>
+  $('#m').innerHTML=`<h2>Ventas, ganancia y dinero</h2>
+    <p class="s">Tu ganancia muestra lo que queda después de los costos y gastos registrados. El saldo bancario muestra el dinero según los movimientos de tu cuenta.</p>
     <div class="card g">
       <div class="k">${fmt(v.sales)}<small>Total vendido, incluye trabajos compensados</small></div>
-      <div class="k" id="stats-result">${fmt(v.profit)}<small>${v.provisional?'Resultado provisional':'Resultado según costos registrados'}</small></div>
+      <div class="k" id="stats-result" style="color:${v.profit<0?'#f87171':'#4ade80'}">${fmt(v.profit)}<small>${v.profit<0?'Pérdida':'Ganancia'} ${v.provisional?'provisional':'según registros'}</small></div>
       <div class="k">${fmt(v.bank)}<small>${v.unclassified?'Banco parcial: falta clasificar':'Saldo bancario calculado'}</small></div>
       <div class="k">${fmt(v.debt)}<small>Deuda neta registrada ${v.debt<0?'(revisar: cancelaciones mayores al préstamo)':''}</small></div>
     </div>
-    <div class="card"><h3>Qué falta para cerrar el resultado</h3>
+    <div class="card"><h3>Cómo se calcula tu ganancia</h3>
+      <p>Ventas ${fmt(v.sales)} + otros ingresos y rendimientos ${fmt(v.extra)} − costos de ventas ${fmt(v.cost)} − gastos del período ${fmt(v.operating)} = <strong>${fmt(v.profit)}</strong>.</p>
+      <p>${v.provisional?'Esta ganancia es provisional: faltan costos o movimientos por clasificar. Puede cambiar cuando completes esos datos.':'Este importe usa los costos y gastos que registraste.'} La ganancia no es dinero disponible para gastar: los préstamos y las compras de stock afectan el banco de otra manera.</p>
+    </div>
+    <div class="card"><h3>Detalle y datos pendientes</h3>
       <p>${v.missingCosts} ventas/trabajos sin costo, por ${fmt(v.missingCostSales)}. Sus costos no se consideran cero: el resultado queda provisional.</p>
       <p>${v.unclassified} movimientos sin clasificación completa o importe válido. Revisalos abajo para calcular banco y deuda correctamente.</p>
       <p>Costos conocidos: <strong>${fmt(v.cost)}</strong> · Margen de ventas ${v.provisional?'provisional':''}: <strong>${fmt(v.salesMargin)}</strong> · Gastos del período: ${fmt(v.operating)} · Otros ingresos de actividad y rendimientos: ${fmt(v.extra)}.</p>
