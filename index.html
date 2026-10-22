@@ -798,7 +798,7 @@ const M = {
 };
 
 const TABS = ['calc','fixed','quotes','products','orders','stock','sales','expenses','stats'];
-const NAMES = { expenses:'Gastos', orders:'Pedidos', calc:'Calculadora', fixed:'Gastos fijos', stock:'Stock', stats:'Estadísticas' };
+const NAMES = { expenses:'Gastos e ingresos', orders:'Pedidos', calc:'Calculadora', fixed:'Gastos fijos', stock:'Stock', stats:'Estadísticas' };
 const ICONS = { expenses:'🧾', orders:'🛠️', calc:'🧮', fixed:'⚙️', quotes:'📋', products:'📦', stock:'🧵', sales:'💰', stats:'📊' };
 
 const PR = `Bambu Lab A1 mini|180×180×180|Cama móvil|300|80|80
@@ -879,6 +879,7 @@ function initData(raw) {
   if (!D.sales) D.sales = [];
   if (!D.orders) D.orders = [];
   if (!D.expenses) D.expenses = [];
+  if (!D.incomes) D.incomes = [];
 }
 
 // Solo en memoria + nube. NADA en el dispositivo.
@@ -2051,7 +2052,10 @@ function quotes() {
 /* ========== STATS ========== */
 function stats() {
   const s = get('sales');
-  const rev = roundMoney(s.reduce((a, r) => a + (knownNumber(r.total) ?? 0), 0));
+  const incomeRows=get('incomes');
+  const salesRevenue=roundMoney(s.reduce((a,r)=>a+(knownNumber(r.total) ?? 0),0));
+  const extraRevenue=roundMoney(incomeRows.reduce((a,r)=>a+(knownNumber(r.amount) ?? 0),0));
+  const rev = roundMoney(salesRevenue+extraRevenue);
   const unknownCosts = s.some(r=>knownNumber(r.cost)===null);
   const cost = s.reduce((a, r) => a + (Number(r.cost) || 0), 0);
   const expenseRows=get('expenses');
@@ -2074,6 +2078,7 @@ function stats() {
     mo[month].gas+=expenseAmount(e);
   });
 
+  incomeRows.forEach(r=>{const m=(r.date || '').slice(0,7) || 's/f';if(!mo[m])mo[m]={ing:0,gas:0};mo[m].ing+=knownNumber(r.amount) ?? 0;});
   // last 6 months
   const months = [];
   const now = new Date();
@@ -2094,7 +2099,7 @@ function stats() {
 
   $('#m').innerHTML = `
     <h2>Estadísticas</h2>
-    <p class="s">Ingresos por ventas menos sus costos y los gastos adicionales registrados. El stock y los pedidos pendientes no se incluyen en el resultado.</p>
+    <p class="s">Ingresos por ventas e ingresos extra menos sus costos y los gastos adicionales registrados. El stock y los pedidos pendientes no se incluyen en el resultado.</p>
 
     <div class="card">
       <div class="g">
@@ -2140,7 +2145,8 @@ function stats() {
     </div>
 
     <div class="card">
-      <div class="title">Gastos registrados</div>
+      <div class="title">Desglose de movimientos</div>
+      <p>Ventas: <strong>${money2(salesRevenue)}</strong> · Ingresos extra: <strong>${money2(extraRevenue)}</strong></p>
       <p>Total pagado registrado: <strong>${money2(expenseTotal)}</strong></p>
       <p>Ya incluidos en costos de ventas: <strong>${money2(roundMoney(expenseTotal-additionalExpenses))}</strong> (no se descuentan nuevamente).</p>
       <p class="s">Gastos fijos configura la calculadora; no representa pagos realizados. El resultado usa todos los registros; el gráfico muestra los últimos seis meses.</p>
@@ -2249,9 +2255,9 @@ async function commerceChange(change, message, refresh) {
     const {data:record,error}=await sb.from('user_data').select('id,data,updated_at').eq('user_id',userId).maybeSingle();
     if(error)throw error;
     if(!record)throw Error('No se encontraron los datos de tu cuenta. Recargá y reintentá.');
-    for(const key of ['products','quotes','sales','orders','stock','expenses']) if(JSON.stringify(record.data[key] || [])!==JSON.stringify(D[key] || [])) throw Error('Los datos cambiaron en otra sesión. Recargá antes de reintentar.');
+    for(const key of ['products','quotes','sales','orders','stock','expenses','incomes']) if(JSON.stringify(record.data[key] || [])!==JSON.stringify(D[key] || [])) throw Error('Los datos cambiaron en otra sesión. Recargá antes de reintentar.');
     const next=structuredClone(record.data);
-    for(const key of ['products','quotes','sales','orders','stock','expenses']) next[key] ||= [];
+    for(const key of ['products','quotes','sales','orders','stock','expenses','incomes']) next[key] ||= [];
     change(next);
     for(const record of [...next.quotes,...next.sales,...next.orders]) for(const item of record.items || []) {
       if(item.snapshot && Number.isInteger(item.productIndex)) {

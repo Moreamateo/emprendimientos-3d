@@ -58,3 +58,5 @@ Los guardados de ventas, pedidos, productos y stock actualizan su vista al confi
 Estadísticas calcula **ingresos de ventas − costos de ventas − gastos adicionales**. Muestra por separado esos importes y el resultado de todos los registros; el gráfico y detalle mensual abarcan los últimos seis meses. Si falta el costo de alguna venta, el resultado se indica como provisional. Se retiró completamente el valor estimado del stock de esta pantalla y sus cálculos.
 
 Si un pago ya está incluido en los costos de ventas, marcá **Ya incluido en el costo de ventas**. Queda en el historial de gastos y en el total pagado registrado, pero no se descuenta otra vez del resultado ni del gráfico. Esta clasificación es manual: el sistema no adivina qué compras o servicios están incluidos en los costos de tus productos.
+
+Se conservan los ingresos extra incorporados en la versión anterior: crear, editar y eliminar desde Gastos e ingresos. Se suman a ventas en los ingresos totales y en el mes correspondiente, sin duplicarse como ventas. Los gastos con campo histórico name se reconocen al editar y buscar.
