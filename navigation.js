@@ -1,5 +1,5 @@
 // Hash routes work on static hosting, including direct links and browser reloads.
-const PAGE_ROUTES={calc:'calculadora',fixed:'gastos-fijos',quotes:'presupuestos',products:'productos',orders:'pedidos',stock:'stock',sales:'ventas',stats:'estadisticas'};
+const PAGE_ROUTES={calc:'calculadora',fixed:'gastos-fijos',quotes:'presupuestos',products:'productos',orders:'pedidos',stock:'stock',sales:'ventas',expenses:'gastos',stats:'estadisticas'};
 let navigationBusy=false,pendingHashRoute=false;
 function pageFromURL(){
   const slug=location.hash.replace(/^#\/?/,'');

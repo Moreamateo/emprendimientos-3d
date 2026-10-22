@@ -21,7 +21,7 @@ Las fotos usan las referencias de Storage y URLs firmadas existentes; no se copi
 - SDK real de Supabase con transporte simulado: cuerpo PATCH, URL corta, filtros de usuario y timestamp, denegación RLS y preservación de otros datos.
 - Diseño móvil de 390 px y escritorio. No se realizaron escrituras de prueba en una cuenta real.
 
-Publicar juntos `index.html`, `navigation.js`, `orders.js`, `orders.css`, `sales-edit.js` y `commerce-maintenance.js`.
+Publicar juntos `index.html`, `navigation.js`, `orders.js`, `orders.css`, `sales-edit.js`, `commerce-maintenance.js` y `expenses.js`.
 
 ## Corregir ventas
 
@@ -48,3 +48,13 @@ Cada apartado tiene su propia dirección: `#/calculadora`, `#/gastos-fijos`, `#/
 El menú cambia de página sin volver a descargar toda la aplicación. Antes de traer los datos recientes se terminan los guardados pendientes. El botón **Actualizar datos** vuelve a consultar la cuenta y actualiza el apartado actual, sin recargar el navegador. Si falla la lectura, se conservan los datos que ya estaban cargados y se muestra el error. Este botón recarga datos guardados; no guarda formularios que todavía no enviaste.
 
 Los guardados de ventas, pedidos, productos y stock actualizan su vista al confirmarse; no hace falta recargar. La dirección del apartado no añade registros a Supabase ni guarda datos privados en la URL.
+
+## Gastos y estadísticas
+
+**Gastos** (`#/gastos`) registra pagos realizados: concepto, fecha, importe en ARS, categoría, proveedor y observaciones. Permite editar, eliminar con confirmación y filtrar por texto, mes o categoría. Usa `D.expenses` en la misma fila de `user_data`, con el guardado autenticado y control de cambios concurrentes existentes; no requiere migraciones.
+
+**Gastos fijos** conserva su configuración y uso en la calculadora. No genera pagos automáticamente. Tampoco se modifican existencias al cargar un gasto.
+
+Estadísticas calcula **ingresos de ventas − costos de ventas − gastos adicionales**. Muestra por separado esos importes y el resultado de todos los registros; el gráfico y detalle mensual abarcan los últimos seis meses. Si falta el costo de alguna venta, el resultado se indica como provisional. Se retiró completamente el valor estimado del stock de esta pantalla y sus cálculos.
+
+Si un pago ya está incluido en los costos de ventas, marcá **Ya incluido en el costo de ventas**. Queda en el historial de gastos y en el total pagado registrado, pero no se descuenta otra vez del resultado ni del gráfico. Esta clasificación es manual: el sistema no adivina qué compras o servicios están incluidos en los costos de tus productos.

@@ -797,9 +797,9 @@ const M = {
   }
 };
 
-const TABS = ['calc','fixed','quotes','products','orders','stock','sales','stats'];
-const NAMES = { orders:'Pedidos', calc:'Calculadora', fixed:'Gastos fijos', stock:'Stock', stats:'Estadísticas' };
-const ICONS = { orders:'🛠️', calc:'🧮', fixed:'⚙️', quotes:'📋', products:'📦', stock:'🧵', sales:'💰', stats:'📊' };
+const TABS = ['calc','fixed','quotes','products','orders','stock','sales','expenses','stats'];
+const NAMES = { expenses:'Gastos', orders:'Pedidos', calc:'Calculadora', fixed:'Gastos fijos', stock:'Stock', stats:'Estadísticas' };
+const ICONS = { expenses:'🧾', orders:'🛠️', calc:'🧮', fixed:'⚙️', quotes:'📋', products:'📦', stock:'🧵', sales:'💰', stats:'📊' };
 
 const PR = `Bambu Lab A1 mini|180×180×180|Cama móvil|300|80|80
 Bambu Lab A1|256×256×256|Cama móvil|300|100|100
@@ -878,6 +878,7 @@ function initData(raw) {
   if (!D.products) D.products = [];
   if (!D.sales) D.sales = [];
   if (!D.orders) D.orders = [];
+  if (!D.expenses) D.expenses = [];
 }
 
 // Solo en memoria + nube. NADA en el dispositivo.
@@ -1102,6 +1103,7 @@ function render() {
   else if (cur === 'products') products();
   else if (cur === 'sales') sales();
   else if (cur === 'orders') orders();
+  else if (cur === 'expenses') expenses();
   else crud(cur);
 }
 
@@ -2049,18 +2051,27 @@ function quotes() {
 /* ========== STATS ========== */
 function stats() {
   const s = get('sales');
-  const rev = s.reduce((a, r) => a + (r.total || 0), 0);
+  const rev = roundMoney(s.reduce((a, r) => a + (knownNumber(r.total) ?? 0), 0));
   const unknownCosts = s.some(r=>knownNumber(r.cost)===null);
   const cost = s.reduce((a, r) => a + (Number(r.cost) || 0), 0);
-  const profit = rev - cost;
+  const expenseRows=get('expenses');
+  const expenseTotal=roundMoney(expenseRows.reduce((n,e)=>n+expenseAmount(e),0));
+  const additionalExpenses=roundMoney(expenseRows.filter(expenseDeducts).reduce((n,e)=>n+expenseAmount(e),0));
+  const profit = roundMoney(rev - cost - additionalExpenses);
 
   // group by month
   const mo = {};
   s.forEach(r => {
     const m = (r.date || '').slice(0, 7) || 's/f';
     if (!mo[m]) mo[m] = { ing: 0, gas: 0 };
-    mo[m].ing += r.total || 0;
-    mo[m].gas += r.cost || 0;
+    mo[m].ing += knownNumber(r.total) ?? 0;
+    mo[m].gas += knownNumber(r.cost) ?? 0;
+  });
+
+  expenseRows.filter(expenseDeducts).forEach(e=>{
+    const month=(e.date || '').slice(0,7) || 's/f';
+    if(!mo[month])mo[month]={ing:0,gas:0};
+    mo[month].gas+=expenseAmount(e);
   });
 
   // last 6 months
@@ -2068,7 +2079,7 @@ function stats() {
   const now = new Date();
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = d.toISOString().slice(0, 7);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
     const label = d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
     months.push({
       key,
@@ -2080,17 +2091,17 @@ function stats() {
 
   const maxVal = Math.max(1, ...months.flatMap(m => [m.ing, m.gas]));
 
-  const stk = get('stock').reduce((a, r) => a + ((r.grams || 0) / 1000) * (r.price || 0), 0);
 
   $('#m').innerHTML = `
     <h2>Estadísticas</h2>
-    <p class="s">Mirá cómo viene tu taller con gráficos claros y la ganancia del mes a primera vista.</p>
+    <p class="s">Ingresos por ventas menos sus costos y los gastos adicionales registrados. El stock y los pedidos pendientes no se incluyen en el resultado.</p>
 
     <div class="card">
       <div class="g">
-        <div class="k" style="color:#4ade80">${money(rev)}<small>Ingresos totales</small></div>
-        <div class="k" style="color:#f87171">${money(cost)}<small>Costos / Gastos</small></div>
-        <div class="k">${money(profit)}<small>${unknownCosts ? 'Ganancia provisional: faltan costos' : 'Ganancia neta'}</small></div>
+        <div class="k" style="color:#4ade80">${money2(rev)}<small>Ingresos totales</small></div>
+        <div class="k" style="color:#f87171">${money2(cost)}<small>Costos de ventas</small></div>
+        <div class="k" style="color:#f87171">${money2(additionalExpenses)}<small>Gastos adicionales</small></div>
+        <div class="k" id="stats-result">${money2(profit)}<small>${unknownCosts ? 'Resultado provisional: faltan costos' : 'Resultado registrado'}</small></div>
         <div class="k">${s.length}<small>Ventas registradas</small></div>
       </div>
     </div>
@@ -2099,7 +2110,7 @@ function stats() {
       <div class="title">Últimos 6 meses</div>
       <div class="legend">
         <span><i class="ing"></i> Ingresos</span>
-        <span><i class="gas"></i> Gastos</span>
+        <span><i class="gas"></i> Costos de ventas + gastos adicionales</span>
       </div>
       <div class="chart-bars" id="chartBars">
         ${months.map((m, i) => `
@@ -2120,17 +2131,19 @@ function stats() {
         <div class="stat-row">
           <span>${m.label}</span>
           <span>
-            <span class="ingreso">+ ${money(m.ing)}</span>
+            <span class="ingreso">+ ${money2(m.ing)}</span>
             &nbsp;&nbsp;
-            <span class="gasto">− ${money(m.gas)}</span>
+            <span class="gasto">− ${money2(m.gas)}</span>
           </span>
         </div>
       `).join('') || '<p style="color:var(--mu)">Sin datos todavía.</p>'}
     </div>
 
     <div class="card">
-      <div class="title">Valor estimado en stock</div>
-      <div class="k">${money(stk)}<small>Basado en gramos restantes × precio del rollo</small></div>
+      <div class="title">Gastos registrados</div>
+      <p>Total pagado registrado: <strong>${money2(expenseTotal)}</strong></p>
+      <p>Ya incluidos en costos de ventas: <strong>${money2(roundMoney(expenseTotal-additionalExpenses))}</strong> (no se descuentan nuevamente).</p>
+      <p class="s">Gastos fijos configura la calculadora; no representa pagos realizados. El resultado usa todos los registros; el gráfico muestra los últimos seis meses.</p>
     </div>
   `;
 
@@ -2236,9 +2249,9 @@ async function commerceChange(change, message, refresh) {
     const {data:record,error}=await sb.from('user_data').select('id,data,updated_at').eq('user_id',userId).maybeSingle();
     if(error)throw error;
     if(!record)throw Error('No se encontraron los datos de tu cuenta. Recargá y reintentá.');
-    for(const key of ['products','quotes','sales','orders','stock']) if(JSON.stringify(record.data[key] || [])!==JSON.stringify(D[key] || [])) throw Error('Los datos cambiaron en otra sesión. Recargá antes de reintentar.');
+    for(const key of ['products','quotes','sales','orders','stock','expenses']) if(JSON.stringify(record.data[key] || [])!==JSON.stringify(D[key] || [])) throw Error('Los datos cambiaron en otra sesión. Recargá antes de reintentar.');
     const next=structuredClone(record.data);
-    for(const key of ['products','quotes','sales','orders','stock']) next[key] ||= [];
+    for(const key of ['products','quotes','sales','orders','stock','expenses']) next[key] ||= [];
     change(next);
     for(const record of [...next.quotes,...next.sales,...next.orders]) for(const item of record.items || []) {
       if(item.snapshot && Number.isInteger(item.productIndex)) {
@@ -2304,5 +2317,6 @@ function safeLogo(value){return typeof value==='string' && /^data:image\/(png|jp
 <script src="orders.js"></script>
 <script src="sales-edit.js"></script>
 <script src="commerce-maintenance.js"></script>
+<script src="expenses.js"></script>
 </body>
 </html>
