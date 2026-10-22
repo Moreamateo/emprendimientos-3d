@@ -48,3 +48,16 @@ Cada apartado tiene su propia dirección: `#/calculadora`, `#/gastos-fijos`, `#/
 El menú cambia de página sin volver a descargar toda la aplicación. Antes de traer los datos recientes se terminan los guardados pendientes. El botón **Actualizar datos** vuelve a consultar la cuenta y actualiza el apartado actual, sin recargar el navegador. Si falla la lectura, se conservan los datos que ya estaban cargados y se muestra el error. Este botón recarga datos guardados; no guarda formularios que todavía no enviaste.
 
 Los guardados de ventas, pedidos, productos y stock actualizan su vista al confirmarse; no hace falta recargar. La dirección del apartado no añade registros a Supabase ni guarda datos privados en la URL.
+
+## Gastos e ingresos extra
+
+En el menú **Gastos e ingresos** (`#/gastos`) registrás gastos del taller (compras de material, envíos, herramientas, etc.) e **ingresos extra** que no son una venta del catálogo. Cada movimiento tiene fecha, concepto, importe y notas opcionales. Se pueden editar o eliminar.
+
+**Estadísticas** suma:
+- Ingresos = totales de ventas + ingresos extra
+- Costos / Gastos = costos de ventas + gastos registrados
+- La ganancia neta usa ese balance
+
+Se eliminó el “valor estimado en stock” del panel de estadísticas (el stock sigue en su apartado). Los pedidos y las señas no se suman solos al balance; solo cuando registrás la venta cobrada.
+
+Persistencia: se agregan `expenses` e `incomes` al JSON de `user_data`, con la misma transacción optimista y control de concurrencia que pedidos y ventas. Publicar también `expenses.js`.
