@@ -23,3 +23,15 @@ Si los AR$3.000 de la regla son una venta adicional a los AR$57.800, el total ve
 Ejecutar `node --test finance.test.cjs`. Cubre conciliación en centavos, compensaciones, préstamos, capital, inventario, gastos incluidos, costos faltantes, efectivo, ventas pendientes, reclasificación y conservación de datos antiguos.
 
 El saldo es calculado desde el historial, no una conexión bancaria. Puede registrarse un saldo inicial cuando el historial comienza con dinero previo; no usarlo para ocultar diferencias. Deuda es el principal neto registrado (sin desagregación por acreedor). No se aplicaron cambios directamente a la base de producción.
+
+## Pérdida de producción
+
+En **Gastos e ingresos → Nuevo gasto → Tipo de movimiento → Pérdida de producción**, ingresá el costo perdido, el material y los gramos desperdiciados (gramos enteros). Se descuenta del resultado y del mes del movimiento, en una línea separada de los costos de ventas. No modifica banco, efectivo, deuda ni las compras de stock: es reconocimiento de una pérdida, no otro pago. El medio se fija en **Sin movimiento de dinero**.
+
+Por defecto descuenta los gramos del material y registra el movimiento de stock en la misma operación que el gasto. Si el peso ya se corrigió manualmente, marcá **Ya desconté estos gramos del stock**: registra el desperdicio sin volver a modificar la cantidad. El material debe existir en Stock para crear una pérdida.
+
+Editar solo el importe no vuelve a consumir material. Editar material o gramos revierte el descuento anterior y aplica el nuevo; eliminar o reclasificar la pérdida devuelve los gramos que descontó automáticamente. Los movimientos de reversión quedan en el historial. Si el material original fue eliminado, se bloquea una reversión que no pueda aplicarse: hay que restaurar ese material antes de cambiar el descuento. Los ajustes manuales previos no se revierten al eliminar el gasto.
+
+No se crea otra compra ni se descuenta automáticamente el precio del rollo: el costo de pérdida es el importe que cargás. No incluyas el mismo desperdicio también en el costo de una venta. Para esta clasificación no se admite marcar el importe como ya incluido, pues debe representar un costo adicional real.
+
+Publicar también `production-loss.js`. No requiere migración SQL. Pruebas: `node --test finance.test.cjs production-loss.test.cjs`.

@@ -3,7 +3,7 @@ function financeOptions(options,value,blank=true){
 }
 function financeFields(group,row={}){
   return `<div class="g">${group==='sales'?'':`<label>Tipo de movimiento<select name="financeKind" required>${financeOptions(MaRoMaFinance.kinds[group],row.financeKind)}</select></label>`}
-    <label>Medio de cobro / pago<select name="settlement" required>${financeOptions(group==='sales'?MaRoMaFinance.accounts:{bank:'Banco / transferencia',cash:'Efectivo'},row.settlement)}</select></label></div>
+    <label>Medio de cobro / pago<select name="settlement" required>${financeOptions(group==='sales'?MaRoMaFinance.accounts:{bank:'Banco / transferencia',cash:'Efectivo',...(group==='expenses'?{none:'Sin movimiento de dinero'}:{})},row.settlement)}</select></label></div>
     <p class="s">Los préstamos y aportes no son ganancias. Comprar stock mueve dinero; su costo se reconoce al vender. Para un trabajo que cancela deuda, el medio de cobro se ignora y no se mueve dinero.</p>`;
 }
 function stats(){
@@ -21,26 +21,35 @@ function stats(){
       <div class="k">${fmt(v.debt)}<small>Deuda neta registrada ${v.debt<0?'(revisar: cancelaciones mayores al préstamo)':''}</small></div>
     </div>
     <div class="card"><h3>Cómo se calcula tu ganancia</h3>
-      <p>Ventas ${fmt(v.sales)} + otros ingresos y rendimientos ${fmt(v.extra)} − costos de ventas ${fmt(v.cost)} − gastos del período ${fmt(v.operating)} = <strong>${fmt(v.profit)}</strong>.</p>
+      <p>Ventas ${fmt(v.sales)} + otros ingresos y rendimientos ${fmt(v.extra)} − costos de ventas ${fmt(v.cost)} − gastos del período ${fmt(v.operating)} − pérdidas de producción ${fmt(v.productionLoss)} = <strong>${fmt(v.profit)}</strong>.</p>
       <p>${v.provisional?'Esta ganancia es provisional: faltan costos o movimientos por clasificar. Puede cambiar cuando completes esos datos.':'Este importe usa los costos y gastos que registraste.'} La ganancia no es dinero disponible para gastar: los préstamos y las compras de stock afectan el banco de otra manera.</p>
     </div>
     <div class="card"><h3>Detalle y datos pendientes</h3>
       <p>${v.missingCosts} ventas/trabajos sin costo, por ${fmt(v.missingCostSales)}. Sus costos no se consideran cero: el resultado queda provisional.</p>
       <p>${v.unclassified} movimientos sin clasificación completa o importe válido. Revisalos abajo para calcular banco y deuda correctamente.</p>
-      <p>Costos conocidos: <strong>${fmt(v.cost)}</strong> · Margen de ventas ${v.provisional?'provisional':''}: <strong>${fmt(v.salesMargin)}</strong> · Gastos del período: ${fmt(v.operating)} · Otros ingresos de actividad y rendimientos: ${fmt(v.extra)}.</p>
+      <p>Costos conocidos: <strong>${fmt(v.cost)}</strong> · Margen de ventas ${v.provisional?'provisional':''}: <strong>${fmt(v.salesMargin)}</strong> · Gastos del período: ${fmt(v.operating)} · Pérdidas de producción: ${fmt(v.productionLoss)} · Otros ingresos de actividad y rendimientos: ${fmt(v.extra)}.</p>
       <p>Compras de stock pagadas: ${fmt(v.inventory)} · Stock disponible valorizado (estimado): ${fmt(v.stockValue)} · Efectivo registrado: ${fmt(v.cash)}.</p>
       <p class="s">El saldo calculado requiere todo el historial y, si corresponde, un saldo inicial. No consulta tu banco. Las cantidades de stock se ajustan en Stock; el consumo incluido en el costo de una venta no se resta otra vez.</p>
     </div>
     <div class="card chart-card"><h3>Últimos 6 meses</h3><div class="legend"><span><i class="ing"></i> Ingresos de actividad</span><span><i class="gas"></i> Costos conocidos + gastos</span></div><div class="chart-bars">${months.map(m=>`<div class="chart-col"><div class="chart-bar-group"><div class="chart-bar ing" style="height:${m.revenue/max*100}%"></div><div class="chart-bar gas" style="height:${m.cost/max*100}%"></div></div><div class="chart-label">${esc(m.label)}</div></div>`).join('')}</div></div>
     <div class="card"><h3>Resultado por mes</h3>${Object.entries(v.monthly).sort(([a],[b])=>b.localeCompare(a)).map(([m,t])=>`<p>${esc(m)} · Ingresos de actividad ${fmt(t.revenue)} · Costos conocidos y gastos ${fmt(t.cost)} · Resultado ${fmt(t.revenue-t.cost)}${v.provisional?' (provisional)':''}</p>`).join('') || '<p>Sin movimientos.</p>'}</div>
     <div class="card"><h3>Conciliar registros existentes</h3><p>Clasificá cada registro una sola vez. Si un préstamo o una compra ya aparece en Gastos e ingresos, editá ese registro; no crees otro. Para registrar nuevos préstamos, rendimientos o devoluciones usá Gastos e ingresos. Las ventas se registran en Ventas.</p><div id="finance-editor"></div>
-    ${['sales','incomes','expenses'].map(group=>`<h3>${{sales:'Ventas',incomes:'Ingresos',expenses:'Pagos'}[group]}</h3>${get(group).map((r,i)=>`<p>${esc(r.date || 'Sin fecha')} · ${esc(r.name || r.description || r.desc || 'Sin concepto')} · ${money2(Number(group==='sales'?r.total:r.amount)||0)} · ${esc(MaRoMaFinance.kinds[group][group==='sales'?'sale':r.financeKind] || 'Sin clasificar')} · ${esc(MaRoMaFinance.accounts[r.financeKind==='work'?'debt':r.settlement] || 'Medio sin clasificar')} <button class="s2" data-finance-group="${group}" data-finance-index="${i}">Clasificar</button></p>`).join('')}`).join('')}</div>`;
+    ${['sales','incomes','expenses'].map(group=>`<h3>${{sales:'Ventas',incomes:'Ingresos',expenses:'Pagos'}[group]}</h3>${get(group).map((r,i)=>`<p>${esc(r.date || 'Sin fecha')} · ${esc(r.name || r.description || r.desc || 'Sin concepto')} · ${money2(Number(group==='sales'?r.total:r.amount)||0)} · ${esc(MaRoMaFinance.kinds[group][group==='sales'?'sale':r.financeKind] || 'Sin clasificar')} · ${esc(r.financeKind==='production_loss'?'Sin movimiento de dinero':MaRoMaFinance.accounts[r.financeKind==='work'?'debt':r.settlement] || 'Medio sin clasificar')} <button class="s2" data-finance-group="${group}" data-finance-index="${i}">Clasificar</button></p>`).join('')}`).join('')}</div>`;
   document.querySelectorAll('[data-finance-group]').forEach(b=>b.onclick=()=>editFinance(b.dataset.financeGroup,Number(b.dataset.financeIndex)));
 }
 function stockMovementHistory(){
-  return `<details class="card"><summary>Historial de movimientos de stock</summary>${get('stockMovements').slice().reverse().map(r=>`<p>${esc(r.date)} · ${esc(get('stock').find(s=>s.id===r.stockId)?.name || 'Material retirado')} · ${esc({opening:'Alta de stock existente',purchase:'Compra',adjustment:'Ajuste de peso',remove:'Baja'}[r.kind] || r.kind)} · ${esc(r.grams)} g</p>`).join('') || '<p>Sin movimientos registrados desde esta actualización.</p>'}</details>`;
+  return `<details class="card"><summary>Historial de movimientos de stock</summary>${get('stockMovements').slice().reverse().map(r=>`<p>${esc(r.date)} · ${esc(get('stock').find(s=>s.id===r.stockId)?.name || r.stockName || 'Material retirado')} · ${esc({opening:'Alta de stock existente',purchase:'Compra',adjustment:'Ajuste de peso',remove:'Baja',production_loss:'Pérdida de producción',loss_reversal:'Reversión de pérdida',loss_recorded:'Pérdida con peso ajustado previamente'}[r.kind] || r.kind)} · ${esc(r.grams)} g${r.wasteGrams?` · desperdicio registrado: ${esc(r.wasteGrams)} g`:""}</p>`).join('') || '<p>Sin movimientos registrados desde esta actualización.</p>'}</details>`;
 }
-function editFinance(group,index){
+async function editFinance(group,index){
+  if(group==='expenses'){
+    const before=get('expenses')[index],signature=JSON.stringify(before);
+    await navigatePage('expenses');
+    if(cur==='expenses' && !navigationBusy){
+      const actual=get('expenses').findIndex(r=>before?.id?r.id===before.id:JSON.stringify(r)===signature);
+      if(actual>=0)expenseEditor(actual);else toast('El gasto cambió en otra sesión. Buscalo en la lista actualizada.');
+    }
+    return;
+  }
   const row=get(group)[index],root=$('#finance-editor');
   root.innerHTML=`<form id="finance-form" class="card"><h3>Clasificar: ${esc(row.name || row.description || row.desc || 'Movimiento')}</h3>${financeFields(group,row)}
   ${group==='incomes'?`<label>Costo del trabajo compensado (opcional)<input name="workCost" type="number" min="0" step="0.01" value="${esc(row.cost ?? '')}" placeholder="Sin registrar"></label>`:''}
