@@ -5,7 +5,7 @@
     const old=previous?.financeKind==='production_loss'?previous.waste:null;
     const current=row?.financeKind==='production_loss'?row.waste:null;
     if(current && (!Number.isSafeInteger(current.grams) || current.grams<=0 || !current.stockId))throw Error('Elegí el material y una cantidad válida de gramos desperdiciados.');
-    if(row?.financeKind==='production_loss' && !current)throw Error('Registrá el material desperdiciado.');
+    if(row?.financeKind==='production_loss'){row.settlement='none';row.includedInSaleCost=false;}
     const oldApplied=old && old.adjustStock===true;
     const newApplied=current && current.adjustStock===true;
     const same=oldApplied && newApplied && old.stockId===current.stockId && old.grams===current.grams;
@@ -35,19 +35,18 @@
 })(typeof globalThis!=='undefined'?globalThis:this);
 
 function lossFields(original){
-  const old=original?.waste;
-  return `<div id="loss-fields" hidden><div class="g"><label>Material desperdiciado<select name="wasteStock"><option value="">Elegí el material</option>${get('stock').map((s,i)=>`<option value="${i}" ${old?.stockId===s.id?'selected':''}>${esc(s.name || 'Material')} · ${esc(s.color || '')} · ${Number(s.grams ?? (s.kg || 0)*1000)} g disponibles</option>`).join('')}${old && !get('stock').some(s=>s.id===old.stockId)?`<option value="original" selected>${esc(old.name)} (retirado del stock)</option>`:''}</select></label>
-    <label>Gramos desperdiciados<input name="wasteGrams" type="number" min="1" step="1" value="${old?.grams || ''}"></label></div>
-    <label class="expense-check"><input name="wasteAdjusted" type="checkbox" ${old?.adjustStock===false?'checked':''}> Ya desconté estos gramos del stock</label>
-    <p class="s">La pérdida descuenta el importe de la ganancia, sin mover banco ni efectivo. El importe es el costo perdido, no el precio de venta. No lo incluyas otra vez en el costo de una venta. Si ya ajustaste el peso, marcá la opción para evitar otro descuento.</p></div>`;
+  return `<div id="loss-fields" hidden>
+    <label class="expense-check"><input name="wasteAdjusted" type="checkbox" ${original?.stockWeightAdjusted?'checked':''}> Ya ajusté el peso del stock</label>
+    <p class="s">La pérdida descuenta el importe de la ganancia, sin mover banco ni efectivo. El importe es el costo perdido, no el precio de venta. No lo incluyas otra vez en el costo de una venta. Si ya ajustaste el peso, marcá la opción para evitar otro descuento.</p>
+    <p class="s">Solo necesitás conocer el costo: no se piden gramos ni se modifica el stock al registrar esta pérdida. La opción deja constancia del ajuste manual.</p>
+    ${original?.waste?'<p class="s">Se conserva el movimiento de material registrado anteriormente; editar el importe no vuelve a descontar stock.</p>':''}</div>`;
 }
 function bindLossFields(form){
   const f=form.elements;
   const toggle=()=>{
     const loss=f.financeKind.value==='production_loss';
     form.querySelector('#loss-fields').hidden=!loss;
-    for(const key of ['wasteStock','wasteGrams','wasteAdjusted'])f[key].disabled=!loss;
-    f.wasteStock.required=loss;f.wasteGrams.required=loss;
+    f.wasteAdjusted.disabled=!loss;
     f.settlement.disabled=loss;f.settlement.required=!loss;
     if(loss){f.settlement.value='none';f.included.checked=false;}
     else if(f.settlement.value==='none')f.settlement.value='';
@@ -55,12 +54,8 @@ function bindLossFields(form){
   };
   f.financeKind.addEventListener('change',toggle);toggle();
 }
-function saveExpenseWithLoss(next,original,row,selection,grams,alreadyAdjusted){
-  if(row.financeKind==='production_loss'){
-    const stock=selection==='original'?null:next.stock[Number(selection)];
-    if(selection==='' || (!stock && selection!=='original'))throw Error('Elegí el material desperdiciado.');
-    if(stock)stock.id ||= crypto.randomUUID();
-    row.waste={stockId:stock?.id || original?.waste?.stockId,name:stock?.name || original?.waste?.name || 'Material',grams,adjustStock:!alreadyAdjusted};
-  }
+function saveExpenseWithLoss(next,original,row,alreadyAdjusted){
+  if(row.financeKind==='production_loss')row.stockWeightAdjusted=alreadyAdjusted;
+  // Keep legacy waste snapshots intact; new losses are amount-only.
   MaRoMaLoss.apply(next,original,row);
 }

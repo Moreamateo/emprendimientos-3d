@@ -3,6 +3,15 @@ const {summarize}=require('./finance.js'),{apply}=require('./production-loss.js'
 const options={uuid:()=>String(Math.random()),date:()=> '2026-10-23'};
 const fixture=()=>({stock:[{id:'p',grams:1000,total:1000,kg:1,price:20000}],stockMovements:[],sales:[{total:30000,cost:5000,settlement:'bank'}],expenses:[{amount:20000,financeKind:'inventory',settlement:'bank'}]});
 const loss=(grams=100)=>({id:'loss',amount:2000,financeKind:'production_loss',settlement:'bank',date:'2026-10-23',waste:{stockId:'p',name:'PLA',grams,adjustStock:true}});
+test('amount-only loss needs no material, lowers profit and leaves all inventory and cash intact',()=>{
+ const d=fixture(),before=summarize(d),stock=JSON.stringify(d.stock);
+ const row={id:'amount-only',amount:123.45,financeKind:'production_loss',settlement:'bank',date:'2026-10-23'};
+ apply(d,null,row,options);d.expenses.push(row);
+ assert.equal(summarize(d).profit,before.profit-12345);assert.equal(summarize(d).bank,before.bank);assert.equal(summarize(d).cash,before.cash);
+ assert.equal(row.settlement,'none');assert.equal(JSON.stringify(d.stock),stock);assert.equal(d.stockMovements.length,0);
+ apply(d,row,{...row,amount:500},options);apply(d,row,null,options);assert.equal(JSON.stringify(d.stock),stock);assert.equal(d.stockMovements.length,0);
+ const empty={stock:[],stockMovements:[]};apply(empty,null,{...row},options);assert.deepEqual(empty.stock,[]);
+});
 test('loss lowers profit and monthly result once, never bank/cash/debt or inventory purchases',()=>{
  const d=fixture(),before=summarize(d),row=loss();apply(d,null,row,options);d.expenses.push(row);const v=summarize(d);
  assert.equal(v.profit,before.profit-200000);assert.equal(v.productionLoss,200000);assert.equal(v.monthly['2026-10'].cost,200000);

@@ -36,7 +36,7 @@ function expenseEditor(index){
     <label>Categoría<select name="category">${categories.map(c=>`<option ${c===(original?.category || 'Otros')?'selected':''}>${esc(c)}</option>`).join('')}</select></label>
     <label>Proveedor / destinatario (opcional)<input name="payee" maxlength="250" value="${esc(original?.payee || '')}"></label></div>
     ${financeFields('expenses',original || {})}${lossFields(original)}<label class="expense-check"><input name="included" type="checkbox" ${original?.includedInSaleCost?'checked':''}> Ya incluido en el costo de ventas (no descontar nuevamente)</label>
-    <p class="s">Marcá esta opción si ese importe ya está contemplado en los costos de tus ventas. El pago queda registrado sin restarse dos veces. Solo Pérdida de producción permite descontar material desde este formulario.</p>
+    <p class="s">Marcá esta opción si ese importe ya está contemplado en los costos de tus ventas. El pago queda registrado sin restarse dos veces. Registrar un gasto o una pérdida por importe no modifica las cantidades de stock.</p>
     <label>Observaciones<textarea name="notes" rows="3" maxlength="4000">${esc(original?.notes || '')}</textarea></label>
     <div class="order-actions"><button class="p" type="submit">Guardar gasto</button><button class="s2" type="button" id="expense-cancel">Cancelar</button></div></form>`;
   const form=$('#expense-form');bindLossFields(form);$('#expense-cancel').onclick=()=>{$('#expense-editor').innerHTML='';};
@@ -46,7 +46,7 @@ function expenseEditor(index){
     if(!description || !orderDateValid(f.date.value) || !Number.isFinite(amount) || amount<=0 || !Number.isSafeInteger(Math.round(amount*100)))return toast('Revisá el concepto, la fecha y el importe del gasto.');
     if(f.financeKind.value!=='production_loss' && f.settlement.value==='none')return toast('Elegí banco o efectivo para ese tipo de gasto.');
     const row={...(original || {}),id:original?.id || crypto.randomUUID(),description,name:description,date:f.date.value,amount:roundMoney(amount),category:f.category.value,payee:f.payee.value.trim(),notes:f.notes.value.trim(),includedInSaleCost:f.included.checked,financeKind:f.financeKind.value,settlement:f.settlement.value,updatedAt:new Date().toISOString()};
-    await commerceChange(next=>{saveExpenseWithLoss(next,original,row,f.wasteStock.value,Number(f.wasteGrams.value),f.wasteAdjusted.checked);if(original)next.expenses[index]=row;else next.expenses.push(row);},'Gasto guardado',expenses);
+    await commerceChange(next=>{saveExpenseWithLoss(next,original,row,f.wasteAdjusted.checked);if(original)next.expenses[index]=row;else next.expenses.push(row);},'Gasto guardado',expenses);
   };
   form.scrollIntoView({behavior:'smooth',block:'start'});form.elements.description.focus();
 }

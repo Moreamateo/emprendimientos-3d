@@ -26,12 +26,12 @@ El saldo es calculado desde el historial, no una conexión bancaria. Puede regis
 
 ## Pérdida de producción
 
-En **Gastos e ingresos → Nuevo gasto → Tipo de movimiento → Pérdida de producción**, ingresá el costo perdido, el material y los gramos desperdiciados (gramos enteros). Se descuenta del resultado y del mes del movimiento, en una línea separada de los costos de ventas. No modifica banco, efectivo, deuda ni las compras de stock: es reconocimiento de una pérdida, no otro pago. El medio se fija en **Sin movimiento de dinero**.
+En **Gastos e ingresos → Nuevo gasto → Tipo de movimiento → Pérdida de producción**, ingresá el concepto, fecha e importe del costo perdido. No requiere material ni gramos y funciona aunque no haya stock cargado. Se descuenta de la ganancia y del resultado del mes sin mover banco, efectivo o deuda, ni generar compras o ajustes de stock.
 
-Por defecto descuenta los gramos del material y registra el movimiento de stock en la misma operación que el gasto. Si el peso ya se corrigió manualmente, marcá **Ya desconté estos gramos del stock**: registra el desperdicio sin volver a modificar la cantidad. El material debe existir en Stock para crear una pérdida.
+La aclaración del formulario es: “La pérdida descuenta el importe de la ganancia, sin mover banco ni efectivo. El importe es el costo perdido, no el precio de venta. No lo incluyas otra vez en el costo de una venta. Si ya ajustaste el peso, marcá la opción para evitar otro descuento.”
 
-Editar solo el importe no vuelve a consumir material. Editar material o gramos revierte el descuento anterior y aplica el nuevo; eliminar o reclasificar la pérdida devuelve los gramos que descontó automáticamente. Los movimientos de reversión quedan en el historial. Si el material original fue eliminado, se bloquea una reversión que no pueda aplicarse: hay que restaurar ese material antes de cambiar el descuento. Los ajustes manuales previos no se revierten al eliminar el gasto.
+La casilla **Ya ajusté el peso del stock** es una constancia opcional del ajuste manual. Marcada o no, las pérdidas nuevas no modifican cantidades. Editar o eliminar una pérdida por importe tampoco crea movimientos de stock.
 
-No se crea otra compra ni se descuenta automáticamente el precio del rollo: el costo de pérdida es el importe que cargás. No incluyas el mismo desperdicio también en el costo de una venta. Para esta clasificación no se admite marcar el importe como ya incluido, pues debe representar un costo adicional real.
+Compatibilidad: las pérdidas antiguas con material conservan sus datos y descuentos previos. Editar únicamente su importe no vuelve a descontar stock. Si se elimina o reclasifica una pérdida antigua que había descontado material automáticamente, se revierte su movimiento original; esta condición se indica en la confirmación de eliminación. Los ajustes manuales previos no se revierten.
 
-Publicar también `production-loss.js`. No requiere migración SQL. Pruebas: `node --test finance.test.cjs production-loss.test.cjs`.
+Publicar también production-loss.js. No requiere migración SQL. Pruebas: node --test finance.test.cjs production-loss.test.cjs.
