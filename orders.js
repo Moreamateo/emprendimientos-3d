@@ -59,7 +59,7 @@ function orderEditor(index) {
     <label>Fecha de pedido<input name="date" type="date" required value="${esc(original?.date || localDate())}"></label>
     <label>Entrega estimada<input name="deliveryDate" type="date" value="${esc(original?.deliveryDate || '')}"></label>
     <label>Estado<select name="status">${[...new Set([...ORDER_STATES,orderState(original || {})])].map(s=>`<option ${s===orderState(original || {})?'selected':''}>${esc(s)}</option>`).join('')}</select></label></div>
-    <fieldset ${locked?'disabled':''}><legend>Productos y precio acordado</legend><div class="g"><label>Catálogo<select id="order-product"><option value="">Elegí un producto</option>${products.map((p,i)=>`<option value="${i}">${esc(p.name)}</option>`).join('')}</select></label><button type="button" class="s2" id="order-add-item">Agregar producto</button></div><div id="order-items"></div>
+    <fieldset ${locked?'disabled':''}><legend>Productos y precio acordado</legend><div class="g"><label>Catálogo<select id="order-product"><option value="">Elegí un producto</option>${products.map((p,i)=>`<option value="${i}">${esc(p.name)}</option>`).join('')}</select></label><button type="button" class="s2" id="order-add-item">Agregar producto</button></div><button type="button" class="s2" id="order-add-manual">+ Producto fuera del catálogo</button><p class="hint">Ingresá su nombre, cantidad y precio directamente en este pedido.</p><div id="order-items"></div>
     <label>Seña / total pagado (AR$)<input name="deposit" type="number" min="0" step="0.01" required value="${knownNumber(original?.deposit) ?? 0}"></label></fieldset>
     ${locked?'<p class="s">La venta ya está registrada: se conservan los importes y productos originales.</p>':''}
     <p id="order-total" aria-live="polite"></p><label>Notas / observaciones<textarea name="notes" maxlength="4000" rows="3">${esc(original?.notes || '')}</textarea></label>
@@ -67,11 +67,16 @@ function orderEditor(index) {
   const form=$('#order-form'),f=form.elements;
   const totals=()=>{const total=orderTotal(items);$('#order-total').textContent=`Total: ${money2(total)} · Saldo: ${money2(roundMoney(total-Number(f.deposit.value)))}`;};
   const drawItems=()=>{
-    $('#order-items').innerHTML=items.map((item,i)=>`<div class="order-edit-item"><strong>${esc(item.name)}</strong><label>Cantidad<input data-order-qty="${i}" type="number" min="1" step="1" required value="${item.qty}"></label><label>Precio unitario (AR$)<input data-order-price="${i}" type="number" min="0" step="0.01" required value="${item.unitPrice}"></label><button class="s2" type="button" data-order-remove="${i}">Quitar</button></div>`).join('');
+    $('#order-items').innerHTML=items.map((item,i)=>`<div class="order-edit-item">${item.manual?`<label class="order-item-name">Nombre del producto<input data-order-name="${i}" required maxlength="250" value="${esc(item.name)}" placeholder="Ej.: pieza personalizada"></label>`:`<strong>${esc(item.name)}</strong>`}<label>Cantidad<input data-order-qty="${i}" type="number" min="1" step="1" required value="${item.qty}"></label><label>Precio unitario (AR$)<input data-order-price="${i}" type="number" min="0" step="0.01" required value="${item.unitPrice}"></label><button class="s2" type="button" data-order-remove="${i}">Quitar</button></div>`).join('');
+    $('#order-items').querySelectorAll('[data-order-name]').forEach(input=>input.oninput=()=>{items[Number(input.dataset.orderName)].name=input.value;});
     for(const key of ['qty','price']) $('#order-items').querySelectorAll(`[data-order-${key}]`).forEach(input=>input.oninput=()=>{const i=Number(input.dataset[key==='qty'?'orderQty':'orderPrice']);items[i][key==='qty'?'qty':'unitPrice']=Number(input.value);items[i].subtotal=roundMoney(items[i].qty*items[i].unitPrice);totals();});
     $('#order-items').querySelectorAll('[data-order-remove]').forEach(b=>b.onclick=()=>{items.splice(Number(b.dataset.orderRemove),1);drawItems();});totals();
   };
   $('#order-add-item').onclick=()=>{const value=$('#order-product').value;if(value==='')return toast('Elegí un producto del catálogo.');const p=products[Number(value)];items.push(snapshotItem(p,1,knownNumber(p.price) ?? 0));drawItems();};
+  $('#order-add-manual').onclick=()=>{
+    items.push({...snapshotItem(null,1,0),name:'',manual:true});drawItems();
+    $('#order-items').querySelector('[data-order-name="'+(items.length-1)+'"]')?.focus();
+  };
   if($('#order-quote'))$('#order-quote').onchange=e=>{
     quoteIndex=e.target.value;
     if(quoteIndex===''){items=[];drawItems();return;}
@@ -84,10 +89,10 @@ function orderEditor(index) {
     e.preventDefault();if(!form.reportValidity())return;
     const total=orderTotal(items),deposit=Number(f.deposit.value),date=f.date.value,deliveryDate=f.deliveryDate.value;
     if(!f.client.value.trim())return toast('Ingresá el cliente.');
-    if(!items.length || !items.every(validItem) || !Number.isSafeInteger(Math.round(total*100)))return toast('Agregá productos con cantidades enteras positivas y precios válidos.');
+    if(!items.length || !items.every(i=>validItem(i) && typeof i.name==='string' && i.name.trim()) || !Number.isSafeInteger(Math.round(total*100)))return toast('Revisá el nombre, la cantidad y el precio de cada producto.');
     if(!Number.isFinite(deposit)||deposit<0||deposit>total)return toast('El importe pagado debe estar entre cero y el total.');
     if(!orderDateValid(date) || (deliveryDate && (!orderDateValid(deliveryDate)||deliveryDate<date)))return toast('Revisá las fechas: la entrega no puede ser anterior al pedido.');
-    const value={...(original || {}),id:original?.id || crypto.randomUUID(),client:f.client.value.trim(),date,deliveryDate,status:f.status.value,notes:f.notes.value.trim(),items:structuredClone(items),total,deposit,updatedAt:new Date().toISOString()};
+    const value={...(original || {}),id:original?.id || crypto.randomUUID(),client:f.client.value.trim(),date,deliveryDate,status:f.status.value,notes:f.notes.value.trim(),items:items.map(i=>({...structuredClone(i),name:i.name.trim()})),total,deposit,updatedAt:new Date().toISOString()};
     if(locked){value.items=original.items;value.total=original.total;value.deposit=original.deposit;}
     await commerceChange(next=>{
       if(quoteIndex!==''){
