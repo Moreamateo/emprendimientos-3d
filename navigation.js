@@ -35,7 +35,7 @@ async function navigatePage(page,{fromHistory=false,refresh=false}={}){
     if(error)throw error;
     if(!data?.data)throw Error('No se encontraron los datos de tu cuenta.');
     if(currentUser?.id!==userId || D!==state)return;
-    initData(data.data);cur=page;loaded=true;render();
+    initData(data.data);rememberCloud(D);cur=page;loaded=true;render();
     window.scrollTo({top:0,behavior:'instant'});
     if(refresh)toast('Datos actualizados');
   }catch(e){

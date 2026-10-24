@@ -762,6 +762,7 @@ button.danger:hover { background: #dc2626; transform: translateY(-1px); }
 </div>
 <div class="toast" id="toast"></div>
 
+<script src="cloud-tools.js"></script>
 <script src="navigation.js"></script>
 <script>
 const $ = s => document.querySelector(s);
@@ -863,11 +864,11 @@ function spoolColor(name) {
 let cur = pageFromURL();
 let D = {};
 
-function initData(raw) {
-  D = raw || {};
+function normalizeData(raw) {
+  const D = structuredClone(raw || {});
   D.cfg = Object.assign({
     pk: 25000, kwh: 50, model: 'Otro / Personalizado', w: 220,
-    life: 4320, parts: 150000, err: 5, rec: 30, mult: 4,
+    life: 4320, parts: 150000, machineCost: 855250, err: 5, rec: 30, mult: 4,
     tallerName: '',
     aliasPago: '', cuentaNombre: '', cuit: '', direccion: '', telefono: '', email: ''
   }, D.cfg || {});
@@ -881,7 +882,12 @@ function initData(raw) {
   if (!D.expenses) D.expenses = [];
   if (!D.incomes) D.incomes = [];
   if (!D.stockMovements) D.stockMovements = [];
+  D.cfg.wear = CloudTools.wear(D.cfg);
+  return D;
 }
+function initData(raw) { D = normalizeData(raw); }
+let cloudBaseline = null, saveInFlight = 0;
+function rememberCloud(raw) { cloudBaseline = normalizeData(raw); }
 
 // Solo en memoria + nube. NADA en el dispositivo.
 initData({});
@@ -895,14 +901,26 @@ function queueSave() {
   const userId=currentUser.id,state=D,payload=structuredClone(D);
   saveQueue=saveQueue.catch(()=>{}).then(async()=>{
     if(currentUser?.id!==userId || D!==state)return;
-    const {data:existing,error:readError}=await sb.from('user_data').select('id').eq('user_id',userId).maybeSingle();
-    if(readError)throw readError;
-    if(!existing)throw Error('No se encontró la cuenta. Recargá antes de guardar.');
-    const {data,error}=await sb.from('user_data').update({data:payload,updated_at:new Date().toISOString()}).eq('user_id',userId).eq('id',existing.id).select('id');
-    if(error)throw error;
-    if(data?.length!==1)throw Error('No se confirmó el guardado.');
-    saveError=null;
-  }).catch(e=>{saveError=e;toast('No se pudo guardar en la nube. Reintentá antes de salir.');});
+    saveInFlight++;
+    try {
+      for(let attempt=0;attempt<3;attempt++){
+        const {data:existing,error:readError}=await sb.from('user_data').select('id,data,updated_at').eq('user_id',userId).maybeSingle();
+        if(readError)throw readError;
+        if(!existing)throw Error('No se encontró la cuenta. Recargá antes de guardar.');
+        if(currentUser?.id!==userId || D!==state)return;
+        const merged=CloudTools.merge(cloudBaseline || normalizeData(existing.data),payload,normalizeData(existing.data));
+        let query=sb.from('user_data').update({data:merged,updated_at:new Date().toISOString()}).eq('user_id',userId).eq('id',existing.id);
+        query=existing.updated_at==null?query.is('updated_at',null):query.eq('updated_at',existing.updated_at);
+        const {data,error}=await query.select('id');
+        if(error)throw error;
+        if(data?.length===1){
+          if(currentUser?.id===userId && D===state){rememberCloud(payload);saveError=null;}
+          return;
+        }
+      }
+      throw Error('Los datos cambiaron durante el guardado. Reintentá.');
+    } finally {saveInFlight--;}
+  }).catch(e=>{if(currentUser?.id===userId && D===state){saveError=e;toast(e.message || 'No se pudo guardar en la nube.');showCloudConflict();}});
   return saveQueue;
 }
 const save = () => {if(!currentUser || !cloudLoaded)return;clearTimeout(saveTimer);saveTimer=setTimeout(queueSave,600);};
@@ -966,6 +984,7 @@ async function loadCloudData() {
     if (data && data.data) {
       // Datos de ESTA cuenta en la nube
       initData(data.data);
+      rememberCloud(D);
       cloudLoaded=true;
       
       toast('Datos de tu cuenta cargados');
@@ -979,6 +998,7 @@ async function loadCloudData() {
         updated_at: new Date().toISOString()
       });
       if (insErr) throw insErr;
+      rememberCloud(D);
       cloudLoaded=true;
       toast('Cuenta nueva — todo vacío');
     }
@@ -997,11 +1017,13 @@ async function enterApp() {
   wrap.style.display = 'flex';
   $('#user-email').textContent = currentUser?.email || '';
   await loadCloudData();
+  if(cloudLoaded){startLiveSync();schedulePhotoCleanup();}
   cur=pageFromURL();
   render();
 }
 
 function showAuth() {
+  stopLiveSync();cloudBaseline=null;
   $('#auth-screen').classList.remove('hidden');
   $('#app-wrap').classList.add('hidden');
   $('#app-wrap').style.display = 'none';
@@ -1091,6 +1113,7 @@ function nav() {
 }
 
 function render() {
+  resetPageDraft();
   updatePageURL();
   nav();
   const main = $('#m');
@@ -1157,7 +1180,7 @@ async function persistProductChange(rows, before, next, userId, state) {
   const result = await update.select('id');
   if (result.error) throw result.error;
   if (result.data?.length !== 1) throw new Error('No se confirmó el guardado: los datos cambiaron o faltan permisos. Recargá y reintentá.');
-  if (currentUser?.id === userId && D === state) rows.splice(0, rows.length, ...next);
+  if (currentUser?.id === userId && D === state) {rows.splice(0, rows.length, ...next);rememberCloud(D);}
 }
 
 async function productChange({ row, file, removePhoto = false, newProduct, changes, deleteProduct = false }) {
@@ -1191,10 +1214,11 @@ async function productChange({ row, file, removePhoto = false, newProduct, chang
       else if (uploaded) next[index].photoPath = uploaded;
     }
     await persistProductChange(rows, before, next, userId, state);
-    // Keep previous objects: deleting them here could break another session's references.
-    // Detached photos can be cleaned up separately after confirming no product references them.
+    // Cleanup checks all persisted historical references and allows a 24-hour grace period.
+    schedulePhotoCleanup();
     uploaded = null;
     if (currentUser?.id === userId && D === state) {
+      resetPageDraft();
       if (cur === 'products') products();
       toast(deleteProduct ? 'Producto eliminado del catálogo' : 'Guardado en la nube');
     }
@@ -1352,9 +1376,11 @@ function calculate3D(v) {
   const des = n('wear') * hours;
   const labor = n('laborRate') * n('laborHours');
   const ins = n('ins');
-  const all = mat + luz + des + labor + ins;
+  const base = mat + luz + des + labor + ins;
+  const contingency = base * n('err') / 100;
+  const all = base + contingency;
   const qty = Math.max(1, Math.floor(n('qty')));
-  return { mat, luz, des, labor, ins, cost:all, all, price:all*n('mult'), unit:all/qty, qty };
+  return { mat, luz, des, labor, ins, base, contingency, cost:all, all, price:all*n('mult'), unit:all/qty, qty };
 }
 
 function calc() {
@@ -1363,12 +1389,12 @@ function calc() {
   const draft = D.calcDraft || {};
   const defaults = { material:'PLA', g:50, h:2, min:30, pk:C.pk ?? 25000,
     kwh:C.kwh ?? 50, w:C.w ?? 220, machineCost:C.machineCost ?? 855250,
-    wear:C.wear ?? ((C.machineCost ?? 855250)*1.2/3000),
+    wear:CloudTools.wear(C), err:C.err ?? 5,
     laborRate:C.laborRate ?? 0, laborHours:0, ins:0, qty:1, mult:C.mult ?? 4,
     model:C.model ?? 'Otro / Personalizado', qd:'', qc:'' };
   const V = { ...defaults, ...draft };
   // Shared settings may have been edited in Gastos fijos or loaded from a profile.
-  ['pk','kwh','w','model','mult','machineCost','wear','laborRate'].forEach(k => {
+  ['pk','kwh','w','model','mult','machineCost','wear','laborRate','err'].forEach(k => {
     if (C[k] !== undefined) V[k] = C[k];
   });
   const help = t => `<span class="help" tabindex="0" title="${esc(t)}" aria-label="${esc(t)}">?</span>`;
@@ -1403,7 +1429,7 @@ function calc() {
         <p class="calc-note">La mano de obra se calcula aparte: horas de trabajo por valor por hora. Ese resultado se suma al costo total.</p>
       </section>
       <section class="card"><div class="title"><span class="section-icon" style="color:#60a5fa">▥</span>Ajustes Finales</div>
-        <div class="g"><label>Margen de ganancia ${help('Multiplica el costo total, incluidos mano de obra y extras.')}<select id="marginPreset">${[2,2.5,3,3.5,4,5].map(m=>`<option value="${m}" ${+V.mult===m?'selected':''}>x${m}${m===4?' - Estándar':''}</option>`).join('')}<option value="custom" ${![2,2.5,3,3.5,4,5].includes(+V.mult)?'selected':''}>Personalizado</option></select></label>${field('qty','Cantidad de piezas')}</div>
+        <div class="g"><label>Margen de ganancia ${help('Multiplica el costo total, incluidos mano de obra y extras.')}<select id="marginPreset">${[2,2.5,3,3.5,4,5].map(m=>`<option value="${m}" ${+V.mult===m?'selected':''}>x${m}${m===4?' - Estándar':''}</option>`).join('')}<option value="custom" ${![2,2.5,3,3.5,4,5].includes(+V.mult)?'selected':''}>Personalizado</option></select></label>${field('qty','Cantidad de piezas')}${field('err','Margen de error','%','Reserva sobre material, energía, desgaste, mano de obra y extras.')}</div>
         <label id="customMargin" ${[2,2.5,3,3.5,4,5].includes(+V.mult)?'hidden':''}>Multiplicador personalizado<input id="cm" type="number" min="0" step="any" value="${esc(V.mult)}"></label>
         <p class="calc-note">La cantidad de piezas se usa solo para dividir el costo total y mostrar el costo por unidad.</p>
       </section>
@@ -1414,7 +1440,7 @@ function calc() {
       <button class="p" id="sp" style="width:100%;margin-top:14px">💾 Guardar como producto</button><button class="s2" id="sq">Guardar como presupuesto</button>
     </section></div></div>
   </div>`;
-  const keys=['g','h','min','pk','kwh','w','machineCost','wear','laborRate','laborHours','ins','qty'];
+  const keys=['g','h','min','pk','kwh','w','machineCost','wear','laborRate','laborHours','ins','qty','err'];
   const read = () => {
     const v = Object.fromEntries(keys.map(k=>[k,Math.max(0,Number($('#c_'+k).value)||0)]));
     return {...v, mult:Math.max(0,Number($('#cm').value)||0), material:$('#c_material').value,
@@ -1424,14 +1450,14 @@ function calc() {
     const v=read(), r=calculate3D(v);
     const currency=n=>'$ '+n.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});
     const row=(name,value,cls='')=>`<div class="rw ${cls}"><span>${name}</span><b>${currency(value)}</b></div>`;
-    $('#rv').innerHTML=row('Costo de material:',r.mat)+row('Electricidad:',r.luz)+row('Amortización / desgaste:',r.des)+row('Mano de obra:',r.labor,'labor')+row('Extras:',r.ins)+'<hr>'+row('Costo total:',r.all)+`<div class="sale-box">Venta sugerida<strong>${currency(r.price)}</strong></div><div class="summary-mini"><div><small>Costo por unidad</small><b>${currency(r.unit)}</b></div><div><small>Margen aplicado</small><b>x${v.mult}</b></div></div>`;
+    $('#rv').innerHTML=row('Costo de material:',r.mat)+row('Electricidad:',r.luz)+row('Amortización / desgaste:',r.des)+row('Mano de obra:',r.labor,'labor')+row('Extras:',r.ins)+'<hr>'+row('Reserva por margen de error:',r.contingency)+row('Costo total:',r.all)+`<div class="sale-box">Venta sugerida<strong>${currency(r.price)}</strong></div><div class="summary-mini"><div><small>Costo por unidad</small><b>${currency(r.unit)}</b></div><div><small>Margen aplicado</small><b>x${v.mult}</b></div></div>`;
     window.__lastCalc=r;
   };
   const commit = key => {
     const v=read();
     D.calcDraft=v;
     // Only the setting actually edited is changed. No blanket rewrite on render.
-    if (['pk','kwh','w','model','mult','machineCost','wear','laborRate'].includes(key)) C[key]=v[key];
+    if (['pk','kwh','w','model','mult','machineCost','wear','laborRate','err'].includes(key)) C[key]=v[key];
     save(); up();
   };
   keys.forEach(k=>$('#c_'+k).oninput=()=>{
@@ -1455,7 +1481,7 @@ function calc() {
     const saved=D.profiles.find(p=>p.cfg?.model===e.target.value && Number.isFinite(p.cfg.machineCost));
     if(saved) {
       $('#c_machineCost').value=saved.cfg.machineCost;
-      $('#c_wear').value=saved.cfg.wear ?? saved.cfg.machineCost*1.2/3000;
+      $('#c_wear').value=CloudTools.wear(saved.cfg);
       C.machineCost=Number($('#c_machineCost').value); C.wear=Number($('#c_wear').value);
     }
     commit('model');
@@ -1469,6 +1495,7 @@ function calc() {
     const p = D.profiles[+i];
     if (!p) return;
     Object.assign(C, p.cfg);
+    C.wear=CloudTools.wear(p.cfg);
     save();
     render(); // reload with new values
   };
@@ -2074,7 +2101,7 @@ function quotes() {
 function fixed() {
   const C = D.cfg;
   const inp = f =>
-    `<label>${f[1]}<input class="fi" data-k="${f[0]}" type="number" step="any" value="${C[f[0]]}"></label>`;
+    `<label>${f[1]}<input class="fi" data-k="${f[0]}" type="number" step="any" min="0" value="${C[f[0]] ?? 0}"></label>`;
   const opts = PR.map(p => p[0]).concat('Otro / Personalizado');
 
   $('#m').innerHTML = `
@@ -2092,9 +2119,12 @@ function fixed() {
         ${inp(['w','Consumo de la impresora (W)'])}
         ${inp(['life','Vida útil de la máquina (horas)'])}
         ${inp(['parts','Costo de repuestos (ARS)'])}
+        ${inp(['machineCost','Costo de la impresora (ARS)'])}
+        ${inp(['wear','Desgaste por hora (ARS/h), compartido con calculadora'])}
         ${inp(['err','Margen de error (%)'])}
       </div>
-      <p class="s" style="margin:14px 0 0">Desgaste por hora de impresión: <b id="dp">${money(C.parts / (C.life || 1))}</b></p>
+      <p class="s" style="margin:14px 0 0">Desgaste por hora de impresión: <b id="dp">${money2(CloudTools.wear(C))}</b></p>
+      <p class="s">El desgaste por hora es el mismo en ambas secciones. Editar repuestos o vida útil lo calcula como repuestos ÷ vida útil; editar el costo de la impresora usa costo × 1,20 ÷ 3.000. También podés ajustarlo manualmente. El margen de error agrega una reserva al costo de los cálculos nuevos.</p>
     </div>
     <div class="card w">
       <div class="title">Catálogo de impresoras <span style="color:var(--mu);font-weight:400;font-size:12px">(valores aproximados)</span></div>
@@ -2115,9 +2145,13 @@ function fixed() {
   `;
 
   $$('.fi').forEach(i => i.oninput = () => {
-    C[i.dataset.k] = +i.value || 0;
+    if(!i.checkValidity())return;
+    const key=i.dataset.k;C[key]=Math.max(0,+i.value || 0);
+    if(key==='parts' || key==='life')C.wear=C.parts/Math.max(1,C.life || 1);
+    if(key==='machineCost')C.wear=C.machineCost*1.2/3000;
+    document.querySelector('[data-k="wear"]').value=C.wear;
     save();
-    $('#dp').textContent = money(C.parts / (C.life || 1));
+    $('#dp').textContent = money2(CloudTools.wear(C));
   });
 
   const pick = n => {
@@ -2178,7 +2212,7 @@ async function commerceChange(change, message, refresh) {
     const result=await query.select('id');
     if(result.error)throw result.error;
     if(result.data?.length!==1)throw Error('No se confirmó el guardado. Recargá y reintentá.');
-    if(D===state && currentUser?.id===userId){initData(next);refresh();toast(message);}
+    if(D===state && currentUser?.id===userId){initData(next);rememberCloud(D);resetPageDraft();refresh();toast(message);schedulePhotoCleanup();}
   }catch(e){toast(e.message || 'No se pudo guardar. Reintentá.');}
   finally{commerceBusy=false;controls.forEach(el=>el.disabled=disabledBefore.get(el));}
 }
@@ -2234,5 +2268,7 @@ function safeLogo(value){return typeof value==='string' && /^data:image\/(png|jp
 <script src="expenses.js"></script>
 <script src="finance.js"></script>
 <script src="finance-ui.js"></script>
+<script src="live-sync.js"></script>
+<script src="photo-cleanup.js"></script>
 </body>
 </html>
