@@ -13,24 +13,24 @@ begin
   end if;
 end $$;
 
--- Do not expose another account's data, even through these definer functions.
+-- Use the caller's existing RLS permissions; never bypass account isolation.
 create or replace function public.product_photo_is_unused(photo_name text)
-returns boolean language sql stable security definer set search_path = ''
+returns boolean language sql stable security invoker set search_path = ''
 as $$
   select auth.uid() is not null
     and split_part(photo_name,'/',1)=auth.uid()::text
-    and exists(select 1 from public.user_data u where u.user_id::text=auth.uid()::text)
+    and exists(select 1 from public.user_data u where u.user_id=(select auth.uid()))
     and not exists (
       select 1 from public.user_data u,
       lateral jsonb_path_query(u.data::jsonb,'lax $.**.photoPath') p(value)
-      where u.user_id::text=auth.uid()::text and p.value=to_jsonb(photo_name)
+      where u.user_id=(select auth.uid()) and p.value=to_jsonb(photo_name)
     );
 $$;
 revoke all on function public.product_photo_is_unused(text) from public, anon;
 grant execute on function public.product_photo_is_unused(text) to authenticated;
 
 create or replace function public.unused_product_photos()
-returns table(name text) language sql stable security definer set search_path = ''
+returns table(name text) language sql stable security invoker set search_path = ''
 as $$
   select o.name from storage.objects o
   where o.bucket_id='product-photos'

@@ -35,3 +35,11 @@ El costo nuevo es material + electricidad + desgaste + mano de obra + extras + r
 `node --test --experimental-test-isolation=none finance.test.cjs production-loss.test.cjs cloud-features.test.cjs`
 
 Las pruebas cubren cálculos anteriores, reserva y desgaste, protección de fotos históricas, cambios simultáneos, formularios abiertos, suscripciones por cuenta, guardados y errores de configuración. No sustituyen una prueba del proyecto real: después de ejecutar el SQL, abrir la misma cuenta en dos dispositivos, guardar desde uno y observar el otro sin recargar; repetir con un formulario abierto. Verificar limpieza con una foto antigua sin referencias y otra conservada en una venta, además de una cuenta distinta. El SQL debe ejecutarse en el proyecto para comprobar sus políticas y permisos reales.
+
+## Activación verificada en el proyecto existente
+
+Se aplicó la migración enable_live_sync_and_safe_photo_cleanup en mi-taller-3d (hhsexdgutclupjifhmbo). user_data está incluida en supabase_realtime. Las dos funciones usan SECURITY INVOKER: respetan las políticas existentes de la cuenta y no pueden ser ejecutadas por anon. La política restrictiva de borrado está activa.
+
+La prueba SQL con el rol authenticated confirmó aislamiento entre cuentas, rechazo de rutas ajenas y conservación de fotos referenciadas. El recuento y la huella de los 12 documentos de negocio coincidieron antes y después de activar las funciones. No se editaron registros ni se borraron archivos durante esa prueba. La entrega real de eventos entre dos navegadores autenticados sigue requiriendo abrir la web actualizada en esos dispositivos.
+
+El asesor de seguridad no detectó advertencias nuevas por estas funciones. Conservó avisos anteriores sobre rls_auto_enable y protección de contraseñas filtradas; no se modificaron configuraciones ajenas a esta mejora. Referencias: https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable y https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection.
