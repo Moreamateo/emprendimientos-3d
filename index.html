@@ -1196,7 +1196,7 @@ async function productChange({ row, file, removePhoto = false, newProduct, chang
     uploaded = null;
     if (currentUser?.id === userId && D === state) {
       if (cur === 'products') products();
-      toast('Guardado en la nube');
+      toast(deleteProduct ? 'Producto eliminado del catálogo' : 'Guardado en la nube');
     }
   } catch (error) {
     // Do not delete an upload on an ambiguous network failure: the DB may have committed it.
@@ -1253,6 +1253,7 @@ function products() {
           <label class="product-upload">${p.photoPath ? 'Cambiar foto' : 'Agregar foto'}<input type="file" data-upload="${i}" accept="image/jpeg,image/png,image/webp" aria-label="Foto de ${esc(p.name)}"></label>
           ${p.photoPath ? `<button class="s2" data-remove-photo="${i}">Quitar foto</button>` : ''}
           <button type="button" class="s2" data-edit-product="${i}">Editar nombre y valores</button><button type="button" class="s2" data-copy-product="${i}">Duplicar producto</button>
+          <button type="button" class="danger product-delete" data-delete-product="${i}" aria-label="Eliminar producto: ${esc(p.name)}">Eliminar producto</button>
         </div></article>`;
     }).join('') || '<div class="card"><p>Todavía no hay productos. Agregá tu primera pieza acá o guardala desde la calculadora.</p></div>'}</div>
   </section>`;
@@ -1269,6 +1270,13 @@ function products() {
     if (file) productChange({ row: rows[Number(input.dataset.upload)], file });
   });
   root.querySelectorAll('[data-remove-photo]').forEach(b => b.onclick = () => productChange({ row: rows[Number(b.dataset.removePhoto)], removePhoto: true }));
+  root.querySelectorAll('[data-delete-product]').forEach(b => b.onclick = () => {
+    if(productBusy || commerceBusy || navigationBusy)return;
+    const row=rows[Number(b.dataset.deleteProduct)];
+    if(!row)return;
+    if(!confirm('¿Eliminar "'+row.name+'" del catálogo? Las ventas, presupuestos y pedidos anteriores se conservarán.'))return;
+    productChange({row,deleteProduct:true});
+  });
   root.querySelectorAll('[data-copy-product]').forEach(b => b.onclick = () => {
     const row = rows[Number(b.dataset.copyProduct)];
     productChange({newProduct: {...row, name: row.name + ' (copia)'}});
