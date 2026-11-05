@@ -1106,7 +1106,12 @@ function nav() {
       <span class="ico">${ICONS[t] || '•'}</span>${NAMES[t] || M[t]?.t || t}
     </a>`
   ).join('');
-  document.querySelectorAll('#nav a').forEach(a=>a.onclick=e=>{
+  const toolsLink=document.createElement('a');
+  toolsLink.href='herramientas/';toolsLink.target='_blank';toolsLink.rel='noopener';
+  toolsLink.innerHTML='<span class="ico">🧰</span>Herramientas';
+  toolsLink.title='Abrir herramientas de diseño 3D';
+  document.querySelector('#nav a[data-t="calc"]').after(toolsLink);
+  document.querySelectorAll('#nav a[data-t]').forEach(a=>a.onclick=e=>{
     if(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)return;
     e.preventDefault();navigatePage(a.dataset.t);
   });

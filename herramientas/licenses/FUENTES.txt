@@ -1,0 +1,7 @@
+Herramientas · Emprendimientos 3D — atribuciones
+
+Three.js (MIT), three-bvh-csg y three-mesh-bvh (MIT), fflate (MIT), Clipper Library 6.4.2 (Boost 1.0), opentype.js (MIT), esbuild (MIT). qrcode (MIT) se conserva como dependencia del núcleo compartido; no hay herramienta QR en este catálogo.
+Fuentes: Anton y Pacifico de Google Fonts (SIL OFL), Helvetiker de los ejemplos de Three.js. Ver licencias adjuntas.
+Catálogo local: star-catalog.json contiene las estrellas de magnitud <= 6 de data/stars.6.json de D3-Celestial, Olaf Frohn. sky.json aporta las líneas de data/constellations.lines.json. https://github.com/ofrohn/d3-celestial . Ver d3-celestial.txt.
+Geocodificación opcional: https://open-meteo.com/ .
+Referencias visuales proporcionadas por el usuario: https://wolfbol.com/makerwolf/ y https://dgestion-fa3db.web.app/herramientas . Implementación propia, sin afiliación.

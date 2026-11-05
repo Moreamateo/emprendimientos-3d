@@ -1,0 +1,278 @@
+{
+  "passed": 68,
+  "failed": 0,
+  "results": [
+    {
+      "name": "plate default",
+      "ok": true
+    },
+    {
+      "name": "plate model=1964",
+      "ok": true
+    },
+    {
+      "name": "plate model=1995",
+      "ok": true
+    },
+    {
+      "name": "stars default",
+      "ok": true
+    },
+    {
+      "name": "stars city=Córdoba",
+      "ok": true
+    },
+    {
+      "name": "stars city=Rosario",
+      "ok": true
+    },
+    {
+      "name": "stars city=Mendoza",
+      "ok": true
+    },
+    {
+      "name": "stars city=La Plata",
+      "ok": true
+    },
+    {
+      "name": "stars city=Mar del Plata",
+      "ok": true
+    },
+    {
+      "name": "stars city=Montevideo",
+      "ok": true
+    },
+    {
+      "name": "stars city=Santiago",
+      "ok": true
+    },
+    {
+      "name": "stars city=Madrid",
+      "ok": true
+    },
+    {
+      "name": "stars city=Ciudad de México",
+      "ok": true
+    },
+    {
+      "name": "stars mode=one",
+      "ok": true
+    },
+    {
+      "name": "stars mode=holes",
+      "ok": true
+    },
+    {
+      "name": "stars shape=circle",
+      "ok": true
+    },
+    {
+      "name": "stars font=sans",
+      "ok": true
+    },
+    {
+      "name": "pixel default",
+      "ok": true
+    },
+    {
+      "name": "keycap default",
+      "ok": true
+    },
+    {
+      "name": "keycap mode=row",
+      "ok": true
+    },
+    {
+      "name": "keycap mode=keycap",
+      "ok": true
+    },
+    {
+      "name": "keycap icon=heart",
+      "ok": true
+    },
+    {
+      "name": "keycap icon=star",
+      "ok": true
+    },
+    {
+      "name": "keycap icon=plus",
+      "ok": true
+    },
+    {
+      "name": "keycap font=sans",
+      "ok": true
+    },
+    {
+      "name": "keycap font=condensed",
+      "ok": true
+    },
+    {
+      "name": "keycap legend=inset",
+      "ok": true
+    },
+    {
+      "name": "keycap unit=1.25",
+      "ok": true
+    },
+    {
+      "name": "keycap unit=1.5",
+      "ok": true
+    },
+    {
+      "name": "keycap unit=2",
+      "ok": true
+    },
+    {
+      "name": "keycap profile=flat",
+      "ok": true
+    },
+    {
+      "name": "keycap profile=cylindrical",
+      "ok": true
+    },
+    {
+      "name": "keycap stem=none",
+      "ok": true
+    },
+    {
+      "name": "keycap base=open",
+      "ok": true
+    },
+    {
+      "name": "keycap base=closed",
+      "ok": true
+    },
+    {
+      "name": "keycap base=round",
+      "ok": true
+    },
+    {
+      "name": "keycap assembly=parts",
+      "ok": true
+    },
+    {
+      "name": "imagekey default",
+      "ok": true
+    },
+    {
+      "name": "imagekey dimension=height",
+      "ok": true
+    },
+    {
+      "name": "imagekey measureMode=drawing",
+      "ok": true
+    },
+    {
+      "name": "imagekey mode=flat",
+      "ok": true
+    },
+    {
+      "name": "imagekey loopSide=left",
+      "ok": true
+    },
+    {
+      "name": "imagekey loopSide=right",
+      "ok": true
+    },
+    {
+      "name": "organizer default",
+      "ok": true
+    },
+    {
+      "name": "organizer pieces=single",
+      "ok": true
+    },
+    {
+      "name": "organizer pieces=cell",
+      "ok": true
+    },
+    {
+      "name": "organizer bed=180",
+      "ok": true
+    },
+    {
+      "name": "organizer bed=220",
+      "ok": true
+    },
+    {
+      "name": "organizer bed=256",
+      "ok": true
+    },
+    {
+      "name": "organizer bed=300",
+      "ok": true
+    },
+    {
+      "name": "organizer bed=350",
+      "ok": true
+    },
+    {
+      "name": "cut default",
+      "ok": true
+    },
+    {
+      "name": "cut joint=dowel",
+      "ok": true
+    },
+    {
+      "name": "cut joint=magnet",
+      "ok": true
+    },
+    {
+      "name": "cut joint=none",
+      "ok": true
+    },
+    {
+      "name": "viewer default",
+      "ok": true
+    },
+    {
+      "name": "pixel requires uploaded file",
+      "ok": true
+    },
+    {
+      "name": "imagekey requires uploaded file",
+      "ok": true
+    },
+    {
+      "name": "cut requires uploaded file",
+      "ok": true
+    },
+    {
+      "name": "viewer requires uploaded file",
+      "ok": true
+    },
+    {
+      "name": "Plate dimensions, relief and material colors",
+      "ok": true
+    },
+    {
+      "name": "Automatic organizer fits 250 mm bed",
+      "ok": true
+    },
+    {
+      "name": "Automatic cuts fit requested bed spacing",
+      "ok": true
+    },
+    {
+      "name": "Single plane preserves cube volume",
+      "ok": true
+    },
+    {
+      "name": "Connector peg",
+      "ok": true
+    },
+    {
+      "name": "Connector dowel",
+      "ok": true
+    },
+    {
+      "name": "Connector magnet",
+      "ok": true
+    },
+    {
+      "name": "Local timezone changes visible stars",
+      "ok": true
+    }
+  ]
+}
